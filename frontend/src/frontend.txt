@@ -16,6 +16,7 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+page.svelte
 <!-- frontend/src/routes/+page.svelte -->
 <script lang="ts">
     import { onMount } from 'svelte';
+    import { goto } from '$app/navigation';
   
     interface User {
         username: string;
@@ -81,13 +82,13 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+page.svelte
 
         if (!response.ok) {
           const errorData = await response.json();
-          throw new Error(errorData.error?.message || 'Failed to create repository');
+          throw new Error(errorData.error?.message || response.statusText);
         }
 
-        const repo = await response.json();
-        console.log('Repository created:', repo);
+        const { data } = await response.json();
+        console.log('Repository created:', data);
         repoName = '';
-        alert('Repository created successfully!');
+        alert(`Repository created successfully! URL: ${data.html_url}`);
       } catch (error) {
         console.error('Error creating repository:', error);
         alert(error instanceof Error ? error.message : 'Failed to create repository');
@@ -136,12 +137,12 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+page.svelte
           console.log('User data received:', userData);
           user = userData;
           localStorage.setItem('user', JSON.stringify(userData));
-          // Only clear URL after storing everything
-          window.history.replaceState({}, document.title, window.location.pathname);
+          // Use goto instead of window.history
+          goto('/', { replaceState: true });
         })
         .catch(error => {
           console.error('Error fetching user data:', error);
-          window.history.replaceState({}, document.title, window.location.pathname);
+          goto('/', { replaceState: true });
         });
       } else {
         console.log('No tokens found in URL');
@@ -281,135 +282,6 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+page.svelte
       cursor: not-allowed;
     }
   </style> 
-E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\auth\callback\+page.svelte 
-<script>
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-
-  async function handleCallback() {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
-      
-      if (!code) {
-        console.error('No code received');
-        goto('/');
-        return;
-      }
-
-      // Let Strapi handle the GitHub OAuth flow
-      const response = await fetch(`http://localhost:1337/api/auth/github/callback?code=${code}`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('Auth response:', data);
-
-      if (data.jwt) {
-        localStorage.setItem('jwt', data.jwt);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        window.location.href = '/';
-      } else {
-        throw new Error('No JWT received');
-      }
-    } catch (error) {
-      console.error('Authentication error:', error);
-      goto('/');
-    }
-  }
-
-  onMount(() => {
-    handleCallback();
-  });
-</script>
-
-<div class="loading">
-  <p>Authenticating with GitHub...</p>
-</div>
-
-<style>
-  .loading {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-  }
-</style>  
-E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\connect\github\redirect\+page.svelte 
-<script>
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-
-  async function handleCallback() {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const error = params.get('error');
-      
-      if (error) {
-        console.error('GitHub auth error:', error);
-        goto('/');
-        return;
-      }
-
-      const accessToken = params.get('access_token');
-      
-      if (!accessToken) {
-        console.error('No access token received');
-        goto('/');
-        return;
-      }
-
-      // Exchange the GitHub access token for a Strapi JWT
-      const response = await fetch(`http://localhost:1337/api/auth/github/callback?access_token=${accessToken}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        console.error('Response status:', response.status);
-        const errorText = await response.text();
-        console.error('Error details:', errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('Auth response:', data);
-
-      if (data.jwt) {
-        localStorage.setItem('jwt', data.jwt);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        window.location.href = '/';
-      } else {
-        console.error('No JWT in response');
-        goto('/');
-      }
-    } catch (error) {
-      console.error('Authentication error:', error);
-      goto('/');
-    }
-  }
-
-  onMount(() => {
-    handleCallback();
-  });
-</script>
-
-<div class="loading">
-  <p>Authenticating with GitHub...</p>
-</div>
-
-<style>
-  .loading {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-  }
-</style>  
 E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\auth.js 
 export async function refreshToken() {
   const jwt = localStorage.getItem('jwt');

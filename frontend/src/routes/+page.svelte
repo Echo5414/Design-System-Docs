@@ -67,13 +67,13 @@
 
         if (!response.ok) {
           const errorData = await response.json();
-          throw new Error(errorData.error?.message || 'Failed to create repository');
+          throw new Error(errorData.error?.message || response.statusText);
         }
 
-        const repo = await response.json();
-        console.log('Repository created:', repo);
+        const { data } = await response.json();
+        console.log('Repository created:', data);
         repoName = '';
-        alert('Repository created successfully!');
+        alert(`Repository created successfully! URL: ${data.html_url}`);
       } catch (error) {
         console.error('Error creating repository:', error);
         alert(error instanceof Error ? error.message : 'Failed to create repository');
