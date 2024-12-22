@@ -1,20 +1,32 @@
-// import type { Core } from '@strapi/strapi';
-
+// File: /src/index.ts (or .js)
 export default {
-  /**
-   * An asynchronous register function that runs before
-   * your application is initialized.
-   *
-   * This gives you an opportunity to extend code.
-   */
-  register(/* { strapi }: { strapi: Core.Strapi } */) {},
+  async register(/*{ strapi }*/) {
+    // This runs before the bootstrap below, but after 
+    // every plugin has been loaded.
+  },
 
-  /**
-   * An asynchronous bootstrap function that runs before
-   * your application gets started.
-   *
-   * This gives you an opportunity to set up your data model,
-   * run jobs, or perform some special logic.
-   */
-  bootstrap(/* { strapi }: { strapi: Core.Strapi } */) {},
+  async bootstrap({ strapi }) {
+    const pluginStore = await strapi.store({
+      type: 'plugin',
+      name: 'users-permissions',
+      key: 'grant',
+    });
+
+    const grantConfig = await pluginStore.get();
+
+    // Configure GitHub OAuth
+    if (!grantConfig.github) {
+      grantConfig.github = {};
+    }
+
+    grantConfig.github.enabled = true;
+    grantConfig.github.key = process.env.GITHUB_CLIENT_ID || 'myDefaultKey';
+    grantConfig.github.secret = process.env.GITHUB_CLIENT_SECRET || 'myDefaultSecret';
+    grantConfig.github.callbackUrl = 'api/auth/github/callback';
+    grantConfig.github.redirectUri = 'http://localhost:1337/api/connect/github/callback';
+    grantConfig.github.scope = ['repo', 'user', 'user:email'];
+
+    await pluginStore.set({ value: grantConfig });
+    strapi.log.info('> Updated GitHub provider scope + enabled in the plugin store!');
+  },
 };
