@@ -112,3 +112,24 @@ declare module '$lib/types' {
 		source?: string;
 	}
 }
+
+// See https://kit.svelte.dev/docs/types#app
+// for information about these interfaces
+declare global {
+	namespace App {
+		// interface Error {}
+		interface Locals {
+			user: {
+				isAuthenticated: boolean;
+				returnTo?: string;
+			};
+		}
+		interface PageData {
+			error?: string | null;
+			isAuthenticated: boolean;
+		}
+		// interface Platform {}
+	}
+}
+
+export {};

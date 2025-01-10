@@ -1,41 +1,32 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
+  import { routes } from '$lib/config/routes';
   import '$lib/styles/tokens.css';
 
-  const user = $page.data.user;
-  let activeTab = 'create';
-  let isConnected = false;
-  let connectedRepo = '';
-  let repoName = '';
-  let repoUrl = '';
-  let isCreatingRepo = false;
+  let activeTab = $state('create');
+  let isConnected = $state(false);
+  let connectedRepo = $state('');
+  let repoName = $state('');
+  let repoUrl = $state('');
+  let isCreatingRepo = $state(false);
 
   async function handleCreateRepo(event: SubmitEvent) {
     event.preventDefault();
     isCreatingRepo = true;
 
     try {
-      const jwt = localStorage.getItem('jwt');
-      const githubToken = localStorage.getItem('github_token');
-      
-      if (!jwt || !githubToken) {
-        throw new Error('Missing authentication tokens');
-      }
-
       const response = await fetch('http://localhost:1337/api/github/create-repo', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${jwt}`,
-          'GitHub-Token': githubToken,
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           name: repoName,
           description: 'Created via Design System Docs',
           private: false,
           auto_init: true
-        })
+        }),
+        credentials: 'include' // Use httpOnly cookies
       });
 
       if (!response.ok) {
@@ -43,9 +34,9 @@
         throw new Error(errorData.error?.message || response.statusText);
       }
 
-      const { data } = await response.json();
-      console.log('Repository created:', data);
-      connectedRepo = data.full_name;
+      const { data: responseData } = await response.json();
+      console.log('Repository created:', responseData);
+      connectedRepo = responseData.full_name;
       isConnected = true;
     } catch (error) {
       console.error('Error creating repository:', error);
@@ -67,11 +58,26 @@
     activeTab = 'create';
   }
 
-  function handleLogout() {
-    localStorage.removeItem('jwt');
-    localStorage.removeItem('github_token');
-    localStorage.removeItem('user');
-    goto('/', { replaceState: true });
+  async function handleLogout() {
+    try {
+      // Call Strapi's logout endpoint to clear httpOnly cookies
+      const response = await fetch('http://localhost:1337/api/auth/logout', {
+        method: 'GET',
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to logout');
+      }
+      
+      // Clear any client-side state
+      localStorage.removeItem('user');
+      
+      // Redirect to login
+      goto(routes.LOGIN, { replaceState: true });
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
   }
 </script>
 
@@ -82,7 +88,7 @@
         <h2 class="card-title">Repository Setup</h2>
         <button 
           class="icon-button" 
-          on:click={handleLogout}
+          onclick={handleLogout}
           aria-label="Logout"
         >
           <svg class="icon" viewBox="0 0 24 24" stroke="currentColor" fill="none">
@@ -102,21 +108,21 @@
             <button
               class="tab-trigger"
               class:active={activeTab === 'create'}
-              on:click={() => activeTab = 'create'}
+              onclick={() => activeTab = 'create'}
             >
               Create New
             </button>
             <button
               class="tab-trigger"
               class:active={activeTab === 'connect'}
-              on:click={() => activeTab = 'connect'}
+              onclick={() => activeTab = 'connect'}
             >
               Connect Existing
             </button>
           </div>
 
           {#if activeTab === 'create'}
-            <form on:submit={handleCreateRepo} class="form">
+            <form onsubmit={handleCreateRepo} class="form">
               <div class="form-group">
                 <label for="repoName" class="label">Repository Name</label>
                 <input
@@ -139,7 +145,7 @@
               </button>
             </form>
           {:else}
-            <form on:submit={handleConnectRepo} class="form">
+            <form onsubmit={handleConnectRepo} class="form">
               <div class="form-group">
                 <label for="repoUrl" class="label">Repository URL</label>
                 <input
@@ -173,7 +179,7 @@
             />
             <button 
               class="icon-link-button" 
-              on:click={handleDisconnectRepo}
+              onclick={handleDisconnectRepo}
               aria-label="Disconnect repository"
             >
               <svg class="icon icon-link" viewBox="0 0 24 24" stroke="currentColor" fill="none">
@@ -187,7 +193,7 @@
           </div>
           <button 
             class="continue-button"
-            on:click={() => goto('/dashboard')}
+            onclick={() => goto(routes.DASHBOARD)}
           >
             <span>Continue to Dashboard</span>
             <svg class="icon" viewBox="0 0 24 24" stroke="currentColor" fill="none">

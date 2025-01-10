@@ -1,49 +1,51 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import type { Handle } from '@sveltejs/kit';
-
-// Default collections structure
-const defaultCollections = {
-    "Primitives": {
-        "description": "All base (primitive) tokens go here.",
-        "extensions": {
-            "com.username.myapp": {
-                "id": crypto.randomUUID()
-            }
-        },
-        "Colors": {
-            "description": "Primitive color tokens.",
-            "extensions": {
-                "com.username.myapp": {
-                    "id": crypto.randomUUID()
-                }
-            }
-        },
-        "Typography": {
-            "description": "Primitive typography tokens.",
-            "extensions": {
-                "com.username.myapp": {
-                    "id": crypto.randomUUID()
-                }
-            }
-        }
-    }
-};
-
-// Get absolute path to collections.json
-const collectionsPath = resolve(process.cwd(), 'src/lib/data/collections.json');
-console.log('Collections file path:', collectionsPath);
-
-// Initialize collections from file if it doesn't exist
-try {
-    console.log('Checking for collections file...');
-    const exists = readFileSync(collectionsPath, 'utf-8');
-    console.log('Collections file exists');
-} catch (error) {
-    console.log('No collections file found, creating with defaults');
-    writeFileSync(collectionsPath, JSON.stringify(defaultCollections, null, 2));
-}
+import { redirect, type Handle } from '@sveltejs/kit';
 
 export const handle: Handle = async ({ event, resolve }) => {
-    return await resolve(event);
+  console.log('=== Hook Start ===');
+  console.log('URL:', event.url.toString());
+  
+  // Get auth state from cookies
+  const jwt = event.cookies.get('jwt');
+  const pathname = event.url.pathname;
+  const isProtectedRoute = pathname.includes('/(protected)/') || 
+                          pathname.startsWith('/setup') || 
+                          pathname.startsWith('/dashboard') ||
+                          pathname.startsWith('/tokens');
+  
+  console.log('Auth state:', {
+    hasJwt: !!jwt,
+    isProtectedRoute,
+    pathname
+  });
+  
+  // Set auth state in locals
+  event.locals.user = {
+    isAuthenticated: !!jwt,
+    // Only store returnTo for protected routes
+    returnTo: isProtectedRoute ? pathname : undefined
+  };
+  
+  // If accessing a protected route without auth, redirect to login
+  if (isProtectedRoute && !jwt) {
+    console.log('Protected route accessed without auth, redirecting to login');
+    // Store the return URL in a cookie
+    event.cookies.set('returnTo', pathname, {
+      path: '/',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 5 // 5 minutes expiry for security
+    });
+    
+    // Clear any existing auth cookies
+    event.cookies.delete('jwt', { path: '/' });
+    event.cookies.delete('github_token', { path: '/' });
+    event.cookies.delete('is_authenticated', { path: '/' });
+    
+    throw redirect(303, '/');
+  }
+  
+  console.log('=== Hook End ===');
+  const response = await resolve(event);
+  return response;
 }; 

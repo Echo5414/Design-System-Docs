@@ -5,9 +5,4 @@ export const handleError: HandleClientError = ({ error, event }) => {
   return {
     message: 'An unexpected error occurred'
   };
-};
-
-// Redirect root to dashboard
-if (typeof window !== 'undefined' && window.location.pathname === '/') {
-  window.location.href = '/dashboard';
-} 
+}; 

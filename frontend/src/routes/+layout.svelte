@@ -1,19 +1,32 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { collections } from '$lib/stores/collections';
+  import { page } from '$app/stores';
   import '$lib/styles/global.css';
+  import '$lib/styles/tokens.css';
 
   let { children } = $props();
-  let isLoading = $state(true);
+  let isLoading = $state(false);
 
-  onMount(async () => {
-    try {
-      await collections.load();
-    } catch(error) {
-      console.error('Error loading collections:', error);
-    } finally {
-      isLoading = false;
-    }
+  // Only load collections for protected routes
+  $effect(() => {
+    // Check if we're on a protected route by looking for (protected) in the pathname
+    const isProtectedRoute = $page.url.pathname.includes('(protected)');
+    if (!isProtectedRoute) return;
+
+    isLoading = true;
+    import('$lib/stores/collections').then(({ collections }) => {
+      collections.load()
+        .catch(error => {
+          console.error('Error loading collections:', error);
+          // If we get a 401, we're not authenticated, redirect to login
+          if (error.message.includes('401')) {
+            window.location.href = '/';
+          }
+        })
+        .finally(() => {
+          isLoading = false;
+        });
+    });
   });
 </script>
 

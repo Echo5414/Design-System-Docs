@@ -14,24 +14,1267 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\app.html
 	</body>
 </html>
  
-E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+error.svelte 
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\components\Sidebar.svelte 
 <script lang="ts">
+  import { page } from '$app/stores';
   import { goto } from '$app/navigation';
+  import { dndzone, type DndEvent } from 'svelte-dnd-action';
+  import { browser } from '$app/environment';
   import { onMount } from 'svelte';
+  import type { Collection, CollectionItem, TokenType } from '../types';
+  import { collectionStates, setCollectionOpen } from '../stores/uiState';
+  import { collections } from '../stores/collections';
+
+  let activeDropdown: string | null = $state(null);
+  let dragActiveCollection: string | null = $state(null);
+  let isDraggingItem = $state(false);
+  let isCreateModalOpen = $state(false);
+  let newCollectionName = $state('');
+  let modalElement = $state<HTMLDialogElement | null>(null);
+  let editingCollectionId = $state<string | null>(null);
+  let editingItemId = $state<string | null>(null);
+  let isInitialized = $state(false);
 
   onMount(() => {
-    // Redirect to home page after a brief delay
-    setTimeout(() => {
-      goto('/', { replaceState: true });
-    }, 100);
+    isInitialized = true;
   });
+
+  function createUniqueId() {
+    return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  function toggleDropdown(id: string, event: Event) {
+    event.stopPropagation();
+    activeDropdown = activeDropdown === id ? null : id;
+  }
+
+  function handleClickOutside(event: MouseEvent) {
+    if (activeDropdown) {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.dropdown-menu') && !target.closest('.more-button')) {
+        activeDropdown = null;
+      }
+    }
+  }
+
+  $effect(() => {
+    if (activeDropdown) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  });
+
+  function toggleCollection(id: string) {
+    const currentState = $collectionStates.getState(id);
+    setCollectionOpen(id, !currentState.isOpen);
+  }
+
+  function startEditingCollection(id: string) {
+    editingCollectionId = id;
+    activeDropdown = null;
+  }
+
+  function saveCollectionName(id: string, event: Event) {
+    const input = event.target as HTMLInputElement;
+    const newName = input.value.trim();
+    
+    if (newName) {
+      const updatedCollections = $collections.map(collection =>
+        collection.id === id
+          ? { ...collection, name: newName }
+          : collection
+      );
+      collections.save(updatedCollections, $page.data.fetch);
+    }
+    editingCollectionId = null;
+  }
+
+  async function addNewItem(collectionId: string) {
+    const collection = $collections.find(c => c.id === collectionId);
+    if (!collection) return;
+
+    const newItem = {
+      id: createUniqueId(),
+      name: 'New Item',
+      items: []
+    };
+
+    const updatedCollections = $collections.map(c =>
+      c.id === collectionId
+        ? { 
+            ...c, 
+            items: [...c.items, newItem]
+          }
+        : c
+    );
+    await collections.save(updatedCollections, $page.data.fetch);
+    // Navigate to the new item
+    goto(`/${newItem.id}`);
+    setCollectionOpen(collectionId, true);
+    activeDropdown = null;
+  }
+
+  function startEditingItem(collectionId: string, itemId: string) {
+    editingItemId = itemId;
+    activeDropdown = null;
+  }
+
+  function saveItemName(collectionId: string, itemId: string, event: Event) {
+    const input = event.target as HTMLInputElement;
+    const newName = input.value.trim();
+    
+    if (newName) {
+      const updatedCollections = $collections.map(collection =>
+        collection.id === collectionId
+          ? {
+              ...collection,
+              items: collection.items.map(item =>
+                item.id === itemId
+                  ? { ...item, name: newName }
+                  : item
+              )
+            }
+          : collection
+      );
+      collections.save(updatedCollections, $page.data.fetch);
+    }
+    editingItemId = null;
+  }
+
+  function deleteCollection(id: string) {
+    if (confirm('Are you sure you want to delete this collection?')) {
+      const updatedCollections = $collections.filter(collection => collection.id !== id);
+      collections.save(updatedCollections, $page.data.fetch);
+    }
+  }
+
+  function deleteItem(collectionId: string, itemId: string) {
+    if (confirm('Are you sure you want to delete this item?')) {
+      const updatedCollections = $collections.map(collection =>
+        collection.id === collectionId
+          ? {
+              ...collection,
+              items: collection.items.filter(item => item.id !== itemId)
+            }
+          : collection
+      );
+      collections.save(updatedCollections, $page.data.fetch);
+    }
+  }
+
+  function handleCollectionDndConsider(event: CustomEvent<DndEvent<Collection>>) {
+    const updatedCollections = event.detail.items.map(item => ({
+      ...item,
+      id: item.id || createUniqueId(),
+      items: item.items || []
+    }));
+    collections.save(updatedCollections, $page.data.fetch);
+  }
+
+  function handleCollectionDndFinalize(event: CustomEvent<DndEvent<Collection>>) {
+    const updatedCollections = event.detail.items.map(item => ({
+      ...item,
+      id: item.id || createUniqueId(),
+      items: item.items || []
+    }));
+    collections.save(updatedCollections, $page.data.fetch);
+  }
+
+  function handleItemsDndConsider(event: CustomEvent<DndEvent<CollectionItem>>, collectionId: string) {
+    dragActiveCollection = collectionId;
+    const updatedCollections = $collections.map(collection =>
+      collection.id === collectionId
+        ? {
+            ...collection,
+            items: event.detail.items.map(item => ({
+              ...item,
+              id: item.id || createUniqueId(),
+              items: item.items || []
+            }))
+          }
+        : collection
+    );
+    collections.save(updatedCollections, $page.data.fetch);
+  }
+
+  function handleItemsDndFinalize(event: CustomEvent<DndEvent<CollectionItem>>, collectionId: string) {
+    dragActiveCollection = null;
+    const updatedCollections = $collections.map(collection =>
+      collection.id === collectionId
+        ? {
+            ...collection,
+            items: event.detail.items.map(item => ({
+              ...item,
+              id: item.id || createUniqueId(),
+              items: item.items || []
+            }))
+          }
+        : collection
+    );
+    collections.save(updatedCollections, $page.data.fetch);
+  }
+
+  function handleCollectionDragStart() {
+    if (isDraggingItem) return false;
+  }
+
+  function handleItemDragStart() {
+    isDraggingItem = true;
+  }
+
+  function handleItemDragEnd() {
+    isDraggingItem = false;
+  }
+
+  function handleCollectionKeydown(event: KeyboardEvent, id: string) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggleCollection(id);
+    }
+  }
+
+  function handleChevronClick(event: MouseEvent, id: string) {
+    event.stopPropagation();
+    toggleCollection(id);
+  }
+
+  function focusOnMount(node: HTMLElement) {
+    node.focus();
+    return {};
+  }
+
+  function handleItemKeydown(event: KeyboardEvent, collectionId: string, itemId: string) {
+    if (event.key === 'Enter') {
+      saveItemName(collectionId, itemId, event);
+    } else if (event.key === 'Escape') {
+      editingItemId = null;
+    }
+  }
+
+  function handleKeydown(event: KeyboardEvent, id: string) {
+    if (event.key === 'Enter') {
+      saveCollectionName(id, event);
+    } else if (event.key === 'Escape') {
+      editingCollectionId = null;
+    }
+  }
+
+  function handleModalClick(event: MouseEvent) {
+    // Only close if clicking the backdrop (dialog element itself)
+    if (event.target === modalElement) {
+      closeCreateModal();
+    }
+  }
+
+  function handleModalKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault(); // Prevent default dialog close
+      closeCreateModal();
+    }
+  }
+
+  function openCreateModal() {
+    isCreateModalOpen = true;
+    newCollectionName = '';
+    // Wait for the next tick to ensure the dialog element is in the DOM
+    setTimeout(() => {
+      if (modalElement) {
+        modalElement.showModal();
+      }
+    }, 0);
+  }
+
+  function closeCreateModal() {
+    if (modalElement) {
+      modalElement.close();
+    }
+    isCreateModalOpen = false;
+    newCollectionName = '';
+  }
+
+  async function createNewCollection() {
+    if (!newCollectionName.trim()) return;
+    
+    const newCollection: Collection = {
+      id: createUniqueId(),
+      name: newCollectionName.trim(),
+      items: []
+    };
+
+    const updatedCollections = [...$collections, newCollection];
+    await collections.save(updatedCollections, $page.data.fetch);
+    closeCreateModal();
+    // Navigate to the new collection
+    goto(`/${newCollection.id}`);
+    setCollectionOpen(newCollection.id, true);
+  }
+
+  function handleCreateKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      createNewCollection();
+    } else if (event.key === 'Escape') {
+      closeCreateModal();
+    }
+  }
+
+  function handleNavigation(id: string, event: MouseEvent) {
+    event.preventDefault();
+    goto(`/${id}`);
+  }
 </script>
 
-<div class="container">
-  <div class="card loading-card">
-    <p class="loading-text">Redirecting to home...</p>
+<aside class="sidebar">
+  <nav class="nav-menu">
+    <div class="collections-section">
+      <div class="section-header">
+        <h2 class="section-title">Collections</h2>
+        <button class="icon-button" onclick={openCreateModal} title="Create new collection">
+          +
+        </button>
+      </div>
+      <section
+        use:dndzone={{
+          items: $collections,
+          dragDisabled: isDraggingItem,
+          flipDurationMs: 150,
+          dropTargetStyle: {
+            outline: '2px dashed var(--color-card-border)'
+          },
+          type: 'collections'
+        }}
+        onconsider={handleCollectionDndConsider}
+        onfinalize={handleCollectionDndFinalize}
+      >
+        {#each $collections as collection (collection.id)}
+          <div class="collection-item" data-collection-id={collection.id}>
+            <div class="collection-header">
+              <div 
+                class="collection-trigger"
+                role="button"
+                tabindex="0"
+              >
+                <div 
+                  class="chevron" 
+                  class:open={$collectionStates.getState(collection.id).isOpen}
+                  onclick={(e) => handleChevronClick(e, collection.id)}
+                  onkeydown={(e) => handleCollectionKeydown(e, collection.id)}
+                  role="button"
+                  tabindex="0"
+                  aria-label={$collectionStates.getState(collection.id).isOpen ? "Collapse collection" : "Expand collection"}
+                  aria-expanded={$collectionStates.getState(collection.id).isOpen}
+                >
+                  {$collectionStates.getState(collection.id).isOpen ? '▼' : '▶'}
+                </div>
+                {#if editingCollectionId === collection.id}
+                  <input
+                    type="text"
+                    class="collection-name-input"
+                    value={collection.name}
+                    onblur={(e) => saveCollectionName(collection.id, e)}
+                    onkeydown={(e) => handleKeydown(e, collection.id)}
+                    use:focusOnMount
+                  />
+                {:else}
+                  <a 
+                    href={`/${collection.id}`} 
+                    class="collection-name-link"
+                    onclick={(e) => handleNavigation(collection.id, e)}
+                  >
+                    {collection.name}
+                  </a>
+                {/if}
+              </div>
+              <div class="collection-actions">
+                <button 
+                  class="icon-button more-button"
+                  onclick={(e) => toggleDropdown(collection.id, e)}
+                  title="More options"
+                  data-active={activeDropdown === collection.id}
+                >
+                  ⋮
+                </button>
+                {#if activeDropdown === collection.id}
+                  <div class="dropdown-menu">
+                    <button 
+                      class="dropdown-item"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        startEditingCollection(collection.id);
+                        activeDropdown = null;
+                      }}
+                    >
+                      Rename Collection
+                    </button>
+                    <button 
+                      class="dropdown-item"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        addNewItem(collection.id);
+                        activeDropdown = null;
+                      }}
+                    >
+                      Add Item
+                    </button>
+                    <button 
+                      class="dropdown-item delete"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        deleteCollection(collection.id);
+                        activeDropdown = null;
+                      }}
+                    >
+                      Delete Collection
+                    </button>
+                  </div>
+                {/if}
+              </div>
+            </div>
+            {#if $collectionStates.getState(collection.id).isOpen}
+              <div
+                class="collection-items dndzone"
+                class:active={dragActiveCollection === collection.id}
+                use:dndzone={{
+                  items: collection.items,
+                  dragDisabled: false,
+                  dropFromOthersDisabled: true,
+                  flipDurationMs: 150,
+                  dropTargetStyle: {
+                    outline: '2px dashed var(--color-card-border)'
+                  },
+                  type: `items-${collection.id}`
+                }}
+                onconsider={(e) => handleItemsDndConsider(e, collection.id)}
+                onfinalize={(e) => {
+                  handleItemsDndFinalize(e, collection.id);
+                  handleItemDragEnd();
+                }}
+              >
+                {#each collection.items as item (item.id)}
+                  <div 
+                    class="item-wrapper"
+                    class:dragging={dragActiveCollection === collection.id}
+                    data-item-id={item.id}
+                  >
+                    {#if editingItemId === item.id}
+                      <div class="nav-link">
+                        <input
+                          type="text"
+                          class="item-name-input"
+                          value={item.name}
+                          onblur={(e) => saveItemName(collection.id, item.id, e)}
+                          onkeydown={(e) => handleItemKeydown(e, collection.id, item.id)}
+                          use:focusOnMount
+                        />
+                      </div>
+                    {:else}
+                      <a 
+                        href={`/${item.id}`} 
+                        class="nav-link"
+                        class:active={$page.url.pathname === `/${item.id}`}
+                        onclick={(e) => handleNavigation(item.id, e)}
+                      >
+                        <span>{item.name}</span>
+                      </a>
+                      <div class="item-actions">
+                        <button 
+                          class="icon-button more-button"
+                          onclick={(e) => toggleDropdown(`${collection.id}-${item.id}`, e)}
+                          title="More options"
+                          data-active={activeDropdown === `${collection.id}-${item.id}`}
+                        >
+                          ⋮
+                        </button>
+                        {#if activeDropdown === `${collection.id}-${item.id}`}
+                          <div class="dropdown-menu">
+                            <button 
+                              class="dropdown-item"
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                startEditingItem(collection.id, item.id);
+                                activeDropdown = null;
+                              }}
+                            >
+                              Rename Item
+                            </button>
+                            <button 
+                              class="dropdown-item delete"
+                              onclick={(e) => {
+                                e.stopPropagation();
+                                deleteItem(collection.id, item.id);
+                                activeDropdown = null;
+                              }}
+                            >
+                              Delete Item
+                            </button>
+                          </div>
+                        {/if}
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/each}
+      </section>
+    </div>
+  </nav>
+</aside>
+
+{#if isCreateModalOpen}
+  <div 
+    class="modal-wrapper"
+    role="button"
+    tabindex="0"
+    onclick={handleModalClick}
+    onkeydown={handleModalKeydown}
+    aria-label="Close modal"
+  >
+    <dialog 
+      class="modal-backdrop"
+      aria-labelledby="modal-title"
+      bind:this={modalElement}
+    >
+      <form 
+        class="modal"
+        method="dialog"
+        onsubmit={(e) => {
+          e.preventDefault();
+          if (newCollectionName.trim()) {
+            createNewCollection();
+          }
+        }}
+      >
+        <h2 id="modal-title" class="modal-title">Create New Collection</h2>
+        <input
+          type="text"
+          class="modal-input"
+          placeholder="Collection name"
+          bind:value={newCollectionName}
+          onkeydown={handleCreateKeydown}
+          aria-label="Collection name"
+          use:focusOnMount
+        />
+        <div class="modal-actions">
+          <button 
+            type="button"
+            class="modal-button secondary" 
+            onclick={closeCreateModal}
+          >
+            Cancel
+          </button>
+          <button 
+            type="submit"
+            class="modal-button primary" 
+            disabled={!newCollectionName.trim()}
+          >
+            Create
+          </button>
+        </div>
+      </form>
+    </dialog>
   </div>
-</div>
+{/if}
+
+<style>
+  .sidebar {
+    width: 260px;
+    background-color: var(--color-card);
+    border-right: 1px solid var(--color-card-border);
+    padding: var(--spacing-4);
+    height: 100vh;
+    overflow-y: auto;
+  }
+
+  .nav-menu {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .collections-section {
+    flex: 1;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-2) var(--spacing-4);
+    margin-bottom: var(--spacing-2);
+  }
+
+  .section-title {
+    font-size: var(--font-size-md);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+
+  .icon-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: var(--transition-base);
+    flex-shrink: 0;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .icon-button:hover {
+    color: var(--color-text-primary);
+    background-color: var(--color-neutral-800);
+  }
+
+  .collection-item {
+    margin-bottom: var(--spacing-2);
+  }
+
+  .collection-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-2);
+    padding: var(--spacing-1);
+    border-radius: var(--radius-sm);
+    transition: var(--transition-base);
+    cursor: grab;
+  }
+
+  .collection-header:hover {
+    background-color: var(--color-neutral-800);
+  }
+
+  .collection-header:hover .collection-trigger,
+  .collection-header:hover .icon-button {
+    color: var(--color-text-primary);
+  }
+
+  .collection-trigger {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    flex: 1;
+    padding: var(--spacing-2);
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: var(--transition-base);
+    min-width: 0;
+  }
+
+  .collection-trigger:hover {
+    color: var(--color-text-primary);
+  }
+
+  .collection-name-input {
+    background: var(--color-neutral-900);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-sm);
+    padding: var(--spacing-1) var(--spacing-2);
+    width: 100%;
+    min-width: 0;
+  }
+
+  .collection-actions {
+    position: relative;
+    display: flex;
+    gap: var(--spacing-1);
+    flex-shrink: 0;
+  }
+
+  .more-button {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .collection-header:hover .more-button {
+    opacity: 1;
+  }
+
+  .more-button[data-active="true"] {
+    opacity: 1;
+  }
+
+  .chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+  }
+
+  .chevron:hover {
+    background-color: var(--color-neutral-700);
+  }
+
+  .chevron.open {
+    transform: rotate(0deg);
+  }
+
+  .item-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-1);
+    min-width: 0;
+    padding: var(--spacing-1) var(--spacing-3);
+    border-radius: var(--radius-md);
+    transition: background-color 0.2s ease;
+    cursor: grab;
+  }
+
+  .item-wrapper:hover {
+    background-color: var(--color-neutral-800);
+  }
+
+  .item-wrapper.dragging {
+    background-color: var(--color-neutral-800);
+    outline: 2px solid var(--color-emerald-600);
+    outline-offset: -2px;
+  }
+
+  .item-wrapper:hover .nav-link {
+    color: var(--color-text-primary);
+  }
+
+  .nav-link.active {
+    background-color: var(--color-neutral-800);
+    color: var(--color-text-primary);
+  }
+
+  .item-wrapper .nav-link.active {
+    background-color: transparent;
+  }
+
+  .item-actions {
+    position: relative;
+    display: flex;
+    gap: var(--spacing-1);
+    flex-shrink: 0;
+  }
+
+  .collection-items {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border-radius: var(--radius-md);
+    transition: background-color 0.2s ease;
+    min-height: 40px;
+  }
+
+  .collection-items.dndzone {
+    min-height: 40px;
+  }
+
+  .collection-items.dndzone:hover {
+    background-color: var(--color-neutral-900);
+  }
+
+  .collection-items.dndzone.active {
+    background-color: var(--color-neutral-800);
+    outline: 2px dashed var(--color-card-border);
+    outline-offset: -2px;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    padding: var(--spacing-2);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    border-radius: var(--radius-md);
+    transition: var(--transition-base);
+    font-size: var(--font-size-sm);
+    flex: 1;
+    min-width: 0;
+  }
+
+  .nav-link:hover {
+    background-color: var(--color-neutral-800);
+    color: var(--color-text-primary);
+  }
+
+  .nav-link.active {
+    background-color: var(--color-neutral-800);
+    color: var(--color-text-primary);
+  }
+
+  .dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: var(--spacing-1);
+    background-color: var(--color-neutral-900);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-1);
+    min-width: 160px;
+    z-index: 100;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+
+  .dropdown-item {
+    display: block;
+    width: 100%;
+    padding: var(--spacing-2) var(--spacing-3);
+    border: none;
+    background: none;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: var(--transition-base);
+  }
+
+  .dropdown-item:hover {
+    background-color: var(--color-neutral-800);
+    color: var(--color-text-primary);
+  }
+
+  .dropdown-item.delete {
+    color: rgb(239, 68, 68);
+  }
+
+  .dropdown-item.delete:hover {
+    background-color: rgb(127, 29, 29);
+    color: white;
+  }
+
+  .collection-item:active,
+  .item-wrapper:active {
+    cursor: grabbing;
+  }
+
+  .collection-header:active {
+    cursor: grabbing;
+  }
+
+  .item-wrapper:active {
+    cursor: grabbing;
+  }
+
+  .collection-name-link {
+    color: inherit;
+    text-decoration: none;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .collection-name-link:hover {
+    color: var(--color-text-primary);
+  }
+
+  .item-name-input {
+    background: var(--color-neutral-900);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-sm);
+    padding: var(--spacing-1) var(--spacing-2);
+    width: 100%;
+    min-width: 0;
+  }
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    border: none;
+    padding: var(--spacing-4);
+    max-width: 100vw;
+    max-height: 100vh;
+    width: 100%;
+  }
+
+  .modal-backdrop::backdrop {
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+  }
+
+  .modal-backdrop[open] {
+    display: flex;
+  }
+
+  .modal {
+    background-color: var(--color-card);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-6);
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    margin: 0;
+  }
+
+  .modal-title {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin: 0 0 var(--spacing-4) 0;
+  }
+
+  .modal-input {
+    width: 100%;
+    padding: var(--spacing-3);
+    background-color: var(--color-neutral-900);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-base);
+    margin-bottom: var(--spacing-4);
+  }
+
+  .modal-input:focus {
+    outline: none;
+    border-color: var(--color-emerald-600);
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-2);
+  }
+
+  .modal-button {
+    padding: var(--spacing-2) var(--spacing-4);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .modal-button.secondary {
+    background-color: transparent;
+    border: 1px solid var(--color-card-border);
+    color: var(--color-text-secondary);
+  }
+
+  .modal-button.secondary:hover {
+    background-color: var(--color-neutral-800);
+    color: var(--color-text-primary);
+  }
+
+  .modal-button.primary {
+    background-color: var(--color-emerald-600);
+    border: none;
+    color: white;
+  }
+
+  .modal-button.primary:hover {
+    background-color: var(--color-emerald-700);
+  }
+
+  .modal-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .modal-wrapper {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: none;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: none;
+    cursor: default;
+    width: 100%;
+  }
+
+  .modal-wrapper:has(dialog[open]) {
+    display: block;
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\components\TokenModal.svelte 
+<script lang="ts">
+  import { createEventDispatcher } from 'svelte';
+  import type { TokenData, TokenType, TokenValueType } from '$lib/types';
+  import collectionsAPI from '$lib/services/api';
+
+  export let isOpen = false;
+
+  const dispatch = createEventDispatcher<{
+    close: void;
+    save: TokenData;
+  }>();
+
+  let tokenName = '';
+  let tokenType: TokenType = 'color';
+  let tokenValue = '';
+  let tokenDescription = '';
+
+  function handleClose() {
+    dispatch('close');
+  }
+
+  function parseTokenValue(type: TokenType, value: string): TokenValueType {
+    switch (type) {
+      case 'color':
+        return value;
+      case 'dimension':
+        const [numStr, unit = 'px'] = value.split(/(\d+)/).filter(Boolean);
+        return {
+          value: parseFloat(numStr),
+          unit
+        };
+      case 'typography':
+        return {
+          'font-family': 'Arial, sans-serif',
+          'font-size': value || '16px',
+          'font-weight': 400,
+          'line-height': '1.5',
+          'letter-spacing': '0'
+        };
+      case 'spacing':
+        const [spacingNum, spacingUnit = 'px'] = value.split(/(\d+)/).filter(Boolean);
+        return {
+          value: parseFloat(spacingNum),
+          unit: spacingUnit
+        };
+      default:
+        return value;
+    }
+  }
+
+  async function handleSubmit(event: SubmitEvent) {
+    event.preventDefault();
+
+    const token: TokenData = {
+      type: tokenType,
+      value: parseTokenValue(tokenType, tokenValue),
+      description: tokenDescription || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      source: 'Design System'
+    };
+
+    dispatch('save', token);
+  }
+
+  const tokenTypes: TokenType[] = ['color', 'typography', 'spacing', 'dimension'];
+</script>
+
+{#if isOpen}
+  <div class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Add Token</h2>
+        <button class="close-button" on:click={handleClose}>×</button>
+      </div>
+      <form on:submit={handleSubmit}>
+        <div class="form-group">
+          <label for="tokenName">Name</label>
+          <input
+            type="text"
+            id="tokenName"
+            bind:value={tokenName}
+            required
+          />
+        </div>
+        <div class="form-group">
+          <label for="tokenType">Type</label>
+          <select id="tokenType" bind:value={tokenType}>
+            {#each tokenTypes as type}
+              <option value={type}>{type}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="tokenValue">Value</label>
+          <input
+            type="text"
+            id="tokenValue"
+            bind:value={tokenValue}
+            required
+            placeholder={tokenType === 'color' ? '#000000' : 
+              tokenType === 'dimension' ? '16px' :
+              tokenType === 'spacing' ? '8px' :
+              tokenType === 'typography' ? '16px' : ''}
+          />
+        </div>
+        <div class="form-group">
+          <label for="tokenDescription">Description</label>
+          <textarea
+            id="tokenDescription"
+            bind:value={tokenDescription}
+            rows="3"
+          ></textarea>
+        </div>
+        <div class="button-group">
+          <button type="button" class="cancel-button" on:click={handleClose}>
+            Cancel
+          </button>
+          <button type="submit" class="save-button">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+
+  .modal {
+    background-color: var(--color-card);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-6);
+    width: 100%;
+    max-width: 500px;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-6);
+  }
+
+  h2 {
+    margin: 0;
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .close-button {
+    background: none;
+    border: none;
+    font-size: var(--font-size-2xl);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .close-button:hover {
+    color: var(--color-text-primary);
+  }
+
+  .form-group {
+    margin-bottom: var(--spacing-4);
+  }
+
+  label {
+    display: block;
+    margin-bottom: var(--spacing-2);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+  }
+
+  input,
+  select,
+  textarea {
+    width: 100%;
+    padding: var(--spacing-2) var(--spacing-3);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-card);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-base);
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--color-emerald-600);
+    box-shadow: 0 0 0 1px var(--color-emerald-600);
+  }
+
+  .button-group {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-3);
+    margin-top: var(--spacing-6);
+  }
+
+  .cancel-button,
+  .save-button {
+    padding: var(--spacing-2) var(--spacing-4);
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .cancel-button {
+    background-color: transparent;
+    border: 1px solid var(--color-card-border);
+    color: var(--color-text-primary);
+  }
+
+  .cancel-button:hover {
+    background-color: var(--color-neutral-900);
+  }
+
+  .save-button {
+    background-color: var(--color-emerald-600);
+    border: none;
+    color: white;
+  }
+
+  .save-button:hover {
+    background-color: var(--color-emerald-700);
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+error.svelte 
+<script lang="ts">
+  import { page } from '$app/stores';
+</script>
+
+{#if $page.error}
+  <div class="container">
+    <div class="error-card">
+      <h1>Error {$page.status}</h1>
+      <p>{$page.error.message}</p>
+      <button class="back-button" on:click={() => history.back()}>Go Back</button>
+    </div>
+  </div>
+{/if}
 
 <style>
   .container {
@@ -40,168 +1283,184 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+error.svelte
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: var(--spacing-4);
   }
 
-  .loading-card {
-    width: auto;
-    padding: var(--spacing-4) var(--spacing-6);
+  .error-card {
+    background: var(--color-card);
     border: 1px solid var(--color-card-border);
     border-radius: var(--radius-lg);
-    background-color: var(--color-card);
+    padding: var(--spacing-6);
+    text-align: center;
+    max-width: 400px;
+    width: 100%;
   }
 
-  .loading-text {
+  h1 {
+    color: var(--color-text-primary);
+    font-size: var(--font-size-2xl);
+    margin: 0 0 var(--spacing-4) 0;
+  }
+
+  p {
     color: var(--color-text-secondary);
-    font-size: var(--font-size-sm);
-    margin: 0;
+    margin: 0 0 var(--spacing-6) 0;
+  }
+
+  .back-button {
+    background: var(--color-emerald-600);
+    color: white;
+    border: none;
+    padding: var(--spacing-2) var(--spacing-4);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .back-button:hover {
+    background: var(--color-emerald-700);
   }
 </style>  
 E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+layout.svelte 
-<script>
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { page } from '$app/stores';
+  import '$lib/styles/global.css';
   import '$lib/styles/tokens.css';
+
+  let { children } = $props();
+  let isLoading = $state(false);
+
+  // Only load collections for protected routes
+  $effect(() => {
+    // Check if we're on a protected route by looking for (protected) in the pathname
+    const isProtectedRoute = $page.url.pathname.includes('(protected)');
+    if (!isProtectedRoute) return;
+
+    isLoading = true;
+    import('$lib/stores/collections').then(({ collections }) => {
+      collections.load()
+        .catch(error => {
+          console.error('Error loading collections:', error);
+          // If we get a 401, we're not authenticated, redirect to login
+          if (error.message.includes('401')) {
+            window.location.href = '/';
+          }
+        })
+        .finally(() => {
+          isLoading = false;
+        });
+    });
+  });
 </script>
 
-<slot />
+{#if isLoading}
+  <div class="loading">
+    <p>Loading...</p>
+  </div>
+{:else}
+  {@render children()}
+{/if}
 
 <style>
-  /* Apply global styles using :global() */
-  :global(html) {
-    font-family: var(--font-family-base);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-
-  :global(body) {
-    margin: 0;
-    padding: 0;
-    background-color: var(--color-background);
-    color: var(--color-text-primary);
+  .loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
     min-height: 100vh;
-  }
-
-  :global(*) {
-    box-sizing: border-box;
-  }
-
-  :global(input, button) {
-    font-family: inherit;
-  }
-
-  :global(:focus-visible) {
-    outline: 2px solid var(--color-emerald-600);
-    outline-offset: 2px;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-lg);
   }
 </style> 
 E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+page.svelte 
-<!-- frontend/src/routes/+page.svelte -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import '$lib/styles/tokens.css';
+  import { page } from '$app/stores';
+  import { routes, DEFAULT_AUTH_REDIRECT } from '$lib/config/routes';
 
-  let isLoggingIn = false;
-  let user = null;
-  let loading = true;
+  let isLoggingIn = $state(false);
+  let loading = $state(false);
+  let error = $state<string | null>($page.data.error || null);
 
   function handleGitHubLogin() {
     isLoggingIn = true;
     console.log('Starting GitHub login...');
     
-    const returnUrl = encodeURIComponent(window.location.origin);
+    // Clear any existing auth state
+    localStorage.removeItem('user');
+    
+    const returnUrl = encodeURIComponent(`${window.location.origin}${routes.LOGIN}`);
     const loginUrl = `http://localhost:1337/api/connect/github?returnTo=${returnUrl}`;
     
     console.log('Redirecting to:', loginUrl);
     window.location.href = loginUrl;
   }
 
-  onMount(() => {
-    const params = new URLSearchParams(window.location.search);
-    const access_token = params.get('access_token');
-    const jwt = params.get('jwt');
-    const error = params.get('error');
+  onMount(async () => {
+    console.log('=== onMount ===');
+    loading = true;
     
-    if (error) {
-      console.error('Authentication error:', error);
-      alert('Failed to authenticate with GitHub');
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
-    }
-    
-    if (access_token && jwt) {
-      localStorage.setItem('github_token', access_token);
-      localStorage.setItem('jwt', jwt);
-      
-      fetch('http://localhost:1337/api/users/me', {
-        headers: {
-          Authorization: `Bearer ${jwt}`,
-        },
-      })
-      .then(res => res.json())
-      .then(userData => {
-        localStorage.setItem('user', JSON.stringify(userData));
-        goto('/setup', { replaceState: true });
-      })
-      .catch(error => {
-        console.error('Error fetching user data:', error);
-        goto('/', { replaceState: true });
+    try {
+      // Check authentication state
+      console.log('Auth state:', {
+        isAuthenticated: $page.data.isAuthenticated,
+        hasError: !!$page.data.error
       });
+      
+      if ($page.data.isAuthenticated) {
+        console.log('User is authenticated, redirecting to:', DEFAULT_AUTH_REDIRECT);
+        await goto(DEFAULT_AUTH_REDIRECT, { replaceState: true });
+      }
+    } catch (e) {
+      console.error('Error in auth flow:', e);
+      error = 'Authentication failed. Please try again.';
+    } finally {
+      loading = false;
     }
-
-    // Check for existing session and redirect if found
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      goto('/setup', { replaceState: true });
-    }
-    loading = false;
   });
 </script>
 
-<main class="container">
-  {#if loading}
+{#if loading}
+  <div class="login-container">
     <div class="card loading-card">
       <p class="loading-text">Loading...</p>
     </div>
-  {:else}
-    <div class="login-container">
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">Design System Docs</h2>
-          <p class="card-description">
-            Sign in to your account to access the design system documentation
-          </p>
-        </div>
-        <div class="card-content">
-          <button 
-            class="github-button"
-            on:click={handleGitHubLogin}
-            disabled={isLoggingIn}
-          >
-            <!-- GitHub Icon -->
-            <svg class="github-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
-            </svg>
-            {isLoggingIn ? 'Connecting...' : 'Continue with GitHub'}
-          </button>
-          <p class="terms-text">
-            By continuing, you agree to our Terms of Service and Privacy Policy
-          </p>
-        </div>
+  </div>
+{:else}
+  <div class="login-container">
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">Design System Docs</h2>
+        <p class="card-description">
+          Sign in to your account to access the design system documentation
+        </p>
+      </div>
+      <div class="card-content">
+        {#if error}
+          <div class="error-message">
+            {error}
+          </div>
+        {/if}
+        <button 
+          class="github-button"
+          onclick={handleGitHubLogin}
+          disabled={isLoggingIn}
+        >
+          <svg class="github-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+          </svg>
+          {isLoggingIn ? 'Connecting...' : 'Continue with GitHub'}
+        </button>
+        <p class="terms-text">
+          By continuing, you agree to our Terms of Service and Privacy Policy
+        </p>
       </div>
     </div>
-  {/if}
-</main>
+  </div>
+{/if}
 
 <style>
-  .container {
-    width: 100%;
-    min-height: 100vh;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
   .login-container {
     min-height: 100vh;
     width: 100%;
@@ -218,6 +1477,17 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+page.svelte
     background-color: var(--color-card);
     backdrop-filter: var(--blur-backdrop);
     padding: var(--spacing-8);
+  }
+
+  .loading-card {
+    width: auto;
+    padding: var(--spacing-4) var(--spacing-6);
+  }
+
+  .loading-text {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    margin: 0;
   }
 
   .card-header {
@@ -283,21 +1553,95 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+page.svelte
     margin: 1rem 0 0 0;
   }
 
-  .loading-card {
-    width: auto;
-    padding: var(--spacing-4) var(--spacing-6);
-  }
-
-  .loading-text {
-    color: var(--color-text-secondary);
+  .error-message {
+    color: var(--color-error);
     font-size: var(--font-size-sm);
-    margin: 0;
+    text-align: center;
+    padding: var(--spacing-2);
+    background-color: var(--color-error-bg);
+    border-radius: var(--radius-sm);
   }
-</style> 
-E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\dashboard\+page.svelte 
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\+layout.svelte 
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
+
+  let loading = true;
+
+  onMount(() => {
+    const jwt = localStorage.getItem('jwt');
+    const user = localStorage.getItem('user');
+
+    if (!jwt || !user) {
+      goto('/', { replaceState: true });
+      return;
+    }
+
+    loading = false;
+  });
+</script>
+
+{#if loading}
+  <div class="loading-container">
+    <p>Loading...</p>
+  </div>
+{:else}
+  <slot />
+{/if}
+
+<style>
+  .loading-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    color: var(--color-text-secondary);
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\colors\+page.svelte 
 <script lang="ts">
   import { page } from '$app/stores';
   const user = $page.data.user;
+</script>
+
+<div class="container">
+  <header class="page-header">
+    <h1 class="page-title">Colors</h1>
+    <p class="page-description">Color palette and usage guidelines for the design system.</p>
+  </header>
+</div>
+
+<style>
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .page-header {
+    margin-bottom: var(--spacing-8);
+  }
+
+  .page-title {
+    color: var(--color-text-primary);
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    margin: 0 0 var(--spacing-2) 0;
+  }
+
+  .page-description {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-lg);
+    margin: 0;
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\dashboard\+page.svelte 
+<script lang="ts">
+  import { page } from '$app/stores';
+  
+  // The user data is now available from the protected layout
+  $: ({ user } = $page.data);
 </script>
 
 <div class="container">
@@ -341,42 +1685,33 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\das
 E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\setup\+page.svelte 
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
+  import { routes } from '$lib/config/routes';
   import '$lib/styles/tokens.css';
 
-  const user = $page.data.user;
-  let activeTab = 'create';
-  let isConnected = false;
-  let connectedRepo = '';
-  let repoName = '';
-  let repoUrl = '';
-  let isCreatingRepo = false;
+  let activeTab = $state('create');
+  let isConnected = $state(false);
+  let connectedRepo = $state('');
+  let repoName = $state('');
+  let repoUrl = $state('');
+  let isCreatingRepo = $state(false);
 
   async function handleCreateRepo(event: SubmitEvent) {
     event.preventDefault();
     isCreatingRepo = true;
 
     try {
-      const jwt = localStorage.getItem('jwt');
-      const githubToken = localStorage.getItem('github_token');
-      
-      if (!jwt || !githubToken) {
-        throw new Error('Missing authentication tokens');
-      }
-
       const response = await fetch('http://localhost:1337/api/github/create-repo', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${jwt}`,
-          'GitHub-Token': githubToken,
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           name: repoName,
           description: 'Created via Design System Docs',
           private: false,
           auto_init: true
-        })
+        }),
+        credentials: 'include' // Use httpOnly cookies
       });
 
       if (!response.ok) {
@@ -384,9 +1719,9 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\set
         throw new Error(errorData.error?.message || response.statusText);
       }
 
-      const { data } = await response.json();
-      console.log('Repository created:', data);
-      connectedRepo = data.full_name;
+      const { data: responseData } = await response.json();
+      console.log('Repository created:', responseData);
+      connectedRepo = responseData.full_name;
       isConnected = true;
     } catch (error) {
       console.error('Error creating repository:', error);
@@ -408,11 +1743,22 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\set
     activeTab = 'create';
   }
 
-  function handleLogout() {
-    localStorage.removeItem('jwt');
-    localStorage.removeItem('github_token');
-    localStorage.removeItem('user');
-    goto('/', { replaceState: true });
+  async function handleLogout() {
+    try {
+      // Call logout endpoint to clear cookies
+      await fetch('http://localhost:1337/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+      
+      // Clear any client-side state
+      localStorage.removeItem('user');
+      
+      // Redirect to login
+      goto(routes.LOGIN, { replaceState: true });
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
   }
 </script>
 
@@ -423,7 +1769,7 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\set
         <h2 class="card-title">Repository Setup</h2>
         <button 
           class="icon-button" 
-          on:click={handleLogout}
+          onclick={handleLogout}
           aria-label="Logout"
         >
           <svg class="icon" viewBox="0 0 24 24" stroke="currentColor" fill="none">
@@ -443,21 +1789,21 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\set
             <button
               class="tab-trigger"
               class:active={activeTab === 'create'}
-              on:click={() => activeTab = 'create'}
+              onclick={() => activeTab = 'create'}
             >
               Create New
             </button>
             <button
               class="tab-trigger"
               class:active={activeTab === 'connect'}
-              on:click={() => activeTab = 'connect'}
+              onclick={() => activeTab = 'connect'}
             >
               Connect Existing
             </button>
           </div>
 
           {#if activeTab === 'create'}
-            <form on:submit={handleCreateRepo} class="form">
+            <form onsubmit={handleCreateRepo} class="form">
               <div class="form-group">
                 <label for="repoName" class="label">Repository Name</label>
                 <input
@@ -480,7 +1826,7 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\set
               </button>
             </form>
           {:else}
-            <form on:submit={handleConnectRepo} class="form">
+            <form onsubmit={handleConnectRepo} class="form">
               <div class="form-group">
                 <label for="repoUrl" class="label">Repository URL</label>
                 <input
@@ -514,7 +1860,7 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\set
             />
             <button 
               class="icon-link-button" 
-              on:click={handleDisconnectRepo}
+              onclick={handleDisconnectRepo}
               aria-label="Disconnect repository"
             >
               <svg class="icon icon-link" viewBox="0 0 24 24" stroke="currentColor" fill="none">
@@ -528,7 +1874,7 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\set
           </div>
           <button 
             class="continue-button"
-            on:click={() => goto('/dashboard')}
+            onclick={() => goto(routes.DASHBOARD)}
           >
             <span>Continue to Dashboard</span>
             <svg class="icon" viewBox="0 0 24 24" stroke="currentColor" fill="none">
@@ -769,78 +2115,1457 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\set
     height: 16px;
   }
 </style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\tokens\+page.svelte 
+<script lang="ts">
+  import TokenModal from '$lib/components/TokenModal.svelte';
+  import { page } from '$app/stores';
+  import { onMount } from 'svelte';
+  import type { Collection, TokenData } from '$lib/types';
+
+  let isTokenModalOpen = $state(false);
+  let collections = $state<Collection[]>([]);
+
+  function handleTokenSave(event: CustomEvent<TokenData>) {
+    const token = event.detail;
+    const id = crypto.randomUUID();
+    
+    // Here you would typically save to your backend
+    console.log('Token created:', token);
+    console.log('Updated collections:', collections);
+
+    isTokenModalOpen = false;
+  }
+</script>
+
+<div class="container">
+  <div class="header">
+    <h1>Design Tokens</h1>
+    <button class="add-token-button" onclick={() => isTokenModalOpen = true}>
+      Add Token
+    </button>
+  </div>
+
+  <TokenModal 
+    isOpen={isTokenModalOpen}
+    on:close={() => isTokenModalOpen = false}
+    on:save={handleTokenSave}
+  />
+</div>
+
+<style>
+  .container {
+    padding: var(--spacing-6);
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-6);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: var(--font-size-2xl);
+    font-weight: 600;
+  }
+
+  .add-token-button {
+    padding: var(--spacing-2) var(--spacing-4);
+    background: var(--color-primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .add-token-button:hover {
+    background: var(--color-primary-dark);
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\typography\+page.svelte 
+<script lang="ts">
+  import { page } from '$app/stores';
+  const user = $page.data.user;
+</script>
+
+<div class="container">
+  <header class="page-header">
+    <h1 class="page-title">Typography</h1>
+    <p class="page-description">Typography styles and usage guidelines for the design system.</p>
+  </header>
+</div>
+
+<style>
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .page-header {
+    margin-bottom: var(--spacing-8);
+  }
+
+  .page-title {
+    color: var(--color-text-primary);
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    margin: 0 0 var(--spacing-2) 0;
+  }
+
+  .page-description {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-lg);
+    margin: 0;
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\[collection]\+page.svelte 
+<script lang="ts">
+  import { page } from '$app/stores';
+  import { onMount } from 'svelte';
+  import { collections } from '$lib/stores/collections';
+  import type { Collection, TokenItem, TokenValueType } from '$lib/types';
+
+  let collection = $state<Collection | null>(null);
+  let tokens = $state<TokenItem[]>([]);
+  let isLoading = $state(true);
+
+  function isColorValue(value: TokenValueType): value is string {
+    return typeof value === 'string' && value.startsWith('#');
+  }
+
+  function isDimensionValue(value: TokenValueType): value is { value: string | number; unit: string } {
+    return typeof value === 'object' && 'value' in value && 'unit' in value && !('font-family' in value);
+  }
+
+  function isTypographyValue(value: TokenValueType): value is {
+    'font-family': string;
+    'font-size': string;
+    'font-weight': number;
+    'line-height': string;
+    'letter-spacing': string;
+  } {
+    return typeof value === 'object' && 'font-family' in value;
+  }
+
+  function getAllTokens(collection: Collection): TokenItem[] {
+    const tokens: TokenItem[] = [];
+    collection.items.forEach(category => {
+      if (category.items) {
+        tokens.push(...category.items);
+      }
+    });
+    return tokens;
+  }
+
+  onMount(async () => {
+    try {
+      await collections.load();
+      
+      // Find the collection by ID
+      const foundCollection = $collections.find(collection => 
+        collection.id === $page.params.collection
+      );
+
+      if (foundCollection) {
+        collection = foundCollection;
+        // Get all tokens from the collection
+        tokens = getAllTokens(collection);
+      }
+    } catch (error) {
+      console.error('Error loading collection:', error);
+    } finally {
+      isLoading = false;
+    }
+  });
+</script>
+
+<div class="container">
+  {#if isLoading}
+    <div class="loading-state">
+      <p class="loading-text">Loading collection...</p>
+    </div>
+  {:else if !collection}
+    <div class="error-state">
+      <p class="error-text">Collection not found</p>
+    </div>
+  {:else}
+    <header class="page-header">
+      <h1 class="page-title">{collection.name}</h1>
+      <p class="page-description">Manage your {collection.name.toLowerCase()} tokens</p>
+    </header>
+
+    <div class="token-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Preview</th>
+            <th>Value</th>
+            <th>Description</th>
+            <th>Created At</th>
+            <th>Last Updated</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each tokens as token}
+            <tr>
+              <td>{token.name}</td>
+              <td>
+                {#if token.type === 'color' && isColorValue(token.value)}
+                  <div 
+                    class="color-preview" 
+                    style="background-color: {token.value}"
+                  ></div>
+                {:else if token.type === 'typography' && isTypographyValue(token.value)}
+                  <div class="typography-preview">
+                    Aa
+                  </div>
+                {:else if token.type === 'dimension' && isDimensionValue(token.value)}
+                  <div class="dimension-preview">
+                    {token.value.value}{token.value.unit || ''}
+                  </div>
+                {:else}
+                  {token.type}
+                {/if}
+              </td>
+              <td>
+                {#if typeof token.value === 'object'}
+                  <pre>{JSON.stringify(token.value, null, 2)}</pre>
+                {:else}
+                  {token.value}
+                {/if}
+              </td>
+              <td>{token.description}</td>
+              <td>{token.tokenData?.createdAt || '-'}</td>
+              <td>{token.tokenData?.updatedAt || '-'}</td>
+              <td>{token.tokenData?.source || '-'}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {/if}
+</div>
+
+<style>
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .page-header {
+    margin-bottom: var(--spacing-8);
+  }
+
+  .page-title {
+    color: var(--color-text-primary);
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    margin: 0 0 var(--spacing-2) 0;
+  }
+
+  .page-description {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-lg);
+    margin: 0;
+  }
+
+  .token-table {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: var(--color-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-card-border);
+  }
+
+  th, td {
+    padding: var(--spacing-4);
+    text-align: left;
+    border-bottom: 1px solid var(--color-card-border);
+  }
+
+  th {
+    font-weight: 500;
+    color: var(--color-text-muted);
+    background-color: var(--color-neutral-900);
+  }
+
+  td {
+    color: var(--color-text-primary);
+  }
+
+  .color-preview {
+    width: 40px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-card-border);
+  }
+
+  .typography-preview {
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-xl);
+    color: var(--color-text-primary);
+  }
+
+  .dimension-preview {
+    font-family: var(--font-family-mono);
+    color: var(--color-text-primary);
+  }
+
+  pre {
+    margin: 0;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-sm);
+    white-space: pre-wrap;
+  }
+
+  .loading-state,
+  .error-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+  }
+
+  .loading-text,
+  .error-text {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-lg);
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\[collection]\[category]\+page.svelte 
+<script lang="ts">
+  import { page } from '$app/stores';
+  import { onMount } from 'svelte';
+  import { collections } from '$lib/stores/collections';
+  import type { Collection, TokenItem, TokenValueType } from '$lib/types';
+
+  let collection = $state<Collection | null>(null);
+  let category = $state<string | null>(null);
+  let tokens = $state<TokenItem[]>([]);
+  let isLoading = $state(true);
+
+  function isColorValue(value: TokenValueType): value is string {
+    return typeof value === 'string' && value.startsWith('#');
+  }
+
+  function isDimensionValue(value: TokenValueType): value is { value: string | number; unit: string } {
+    return typeof value === 'object' && 'value' in value && 'unit' in value && !('font-family' in value);
+  }
+
+  function isTypographyValue(value: TokenValueType): value is {
+    'font-family': string;
+    'font-size': string;
+    'font-weight': number;
+    'line-height': string;
+    'letter-spacing': string;
+  } {
+    return typeof value === 'object' && 'font-family' in value;
+  }
+
+  function getAllTokens(obj: any, categoryId: string): TokenItem[] {
+    const tokens: TokenItem[] = [];
+    Object.entries(obj).forEach(([key, value]: [string, any]) => {
+      if (value.type && value.value) {
+        tokens.push({
+          name: key,
+          ...value
+        });
+      } else if (typeof value === 'object' && !value.type) {
+        // Skip the extensions object
+        if (key !== 'extensions' && key === categoryId) {
+          tokens.push(...getAllTokens(value, categoryId));
+        }
+      }
+    });
+    return tokens;
+  }
+
+  onMount(async () => {
+    try {
+      await collections.load();
+      
+      // Find the collection by ID
+      const foundCollection = $collections.find(collection => 
+        collection.id === $page.params.collection
+      );
+
+      if (foundCollection) {
+        collection = foundCollection;
+        category = $page.params.category;
+
+        // Find the category by ID
+        const foundCategory = foundCollection.items.find(item => 
+          item.id === category
+        );
+
+        if (foundCategory) {
+          // Get tokens for the specific category
+          tokens = foundCategory.items || [];
+        }
+      }
+    } catch (error) {
+      console.error('Error loading collection:', error);
+    } finally {
+      isLoading = false;
+    }
+  });
+
+  let pageTitle = $derived(() => {
+    if (collection && category) {
+      return `${collection.name}/${category}`;
+    }
+    return 'Loading...';
+  });
+</script>
+
+<div class="container">
+  {#if isLoading}
+    <div class="loading-state">
+      <p class="loading-text">Loading category...</p>
+    </div>
+  {:else if !collection || !category}
+    <div class="error-state">
+      <p class="error-text">Category not found</p>
+    </div>
+  {:else}
+    <header class="page-header">
+      <h1 class="page-title">{pageTitle}</h1>
+      <p class="page-description">Manage your {category.toLowerCase()} tokens</p>
+    </header>
+
+    <div class="token-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Preview</th>
+            <th>Value</th>
+            <th>Description</th>
+            <th>Created At</th>
+            <th>Last Updated</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each tokens as token}
+            <tr>
+              <td>{token.name}</td>
+              <td>
+                {#if token.type === 'color' && isColorValue(token.value)}
+                  <div 
+                    class="color-preview" 
+                    style="background-color: {token.value}"
+                  ></div>
+                {:else if token.type === 'typography' && isTypographyValue(token.value)}
+                  <div class="typography-preview">
+                    Aa
+                  </div>
+                {:else if token.type === 'dimension' && isDimensionValue(token.value)}
+                  <div class="dimension-preview">
+                    {token.value.value}{token.value.unit || ''}
+                  </div>
+                {:else}
+                  {token.type}
+                {/if}
+              </td>
+              <td>
+                {#if typeof token.value === 'object'}
+                  <pre>{JSON.stringify(token.value, null, 2)}</pre>
+                {:else}
+                  {token.value}
+                {/if}
+              </td>
+              <td>{token.description}</td>
+              <td>{token.tokenData?.createdAt || '-'}</td>
+              <td>{token.tokenData?.updatedAt || '-'}</td>
+              <td>{token.tokenData?.source || '-'}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {/if}
+</div>
+
+<style>
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .page-header {
+    margin-bottom: var(--spacing-8);
+  }
+
+  .page-title {
+    color: var(--color-text-primary);
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    margin: 0 0 var(--spacing-2) 0;
+  }
+
+  .page-description {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-lg);
+    margin: 0;
+  }
+
+  .token-table {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: var(--color-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-card-border);
+  }
+
+  th, td {
+    padding: var(--spacing-4);
+    text-align: left;
+    border-bottom: 1px solid var(--color-card-border);
+  }
+
+  th {
+    font-weight: 500;
+    color: var(--color-text-muted);
+    background-color: var(--color-neutral-900);
+  }
+
+  td {
+    color: var(--color-text-primary);
+  }
+
+  .color-preview {
+    width: 40px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-card-border);
+  }
+
+  .typography-preview {
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-xl);
+    color: var(--color-text-primary);
+  }
+
+  .dimension-preview {
+    font-family: var(--font-family-mono);
+    color: var(--color-text-primary);
+  }
+
+  pre {
+    margin: 0;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-sm);
+    white-space: pre-wrap;
+  }
+
+  .loading-state,
+  .error-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+  }
+
+  .loading-text,
+  .error-text {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-lg);
+  }
+</style>  
 E:\Projekte\Coding\github\Design-System-Docs\frontend\src\app.d.ts 
-// See https://svelte.dev/docs/kit/types#app.d.ts
+/// <reference types="@sveltejs/kit" />
+/// <reference types="svelte" />
+/// <reference types="vite/client" />
+
+declare module '$app/stores' {
+	import type { Readable } from 'svelte/store';
+	import type { Navigation, Page } from '@sveltejs/kit';
+
+	export const page: Readable<Page>;
+	export const navigating: Readable<Navigation | null>;
+}
+
+declare module '$app/navigation' {
+	export function goto(
+		url: string | URL,
+		opts?: {
+			replaceState?: boolean;
+			noscroll?: boolean;
+			keepfocus?: boolean;
+			state?: any;
+		}
+	): Promise<void>;
+}
+
+declare module 'svelte/runes' {
+	export interface State<T> {
+		value: T;
+		get: () => T;
+		set: (value: T) => void;
+	}
+
+	export interface Derived<T> {
+		value: T;
+		get: () => T;
+	}
+
+	export function state<T>(value: T): State<T>;
+	export function derived<T>(fn: () => T): Derived<T>;
+}
+
+declare module '$lib/stores/collections' {
+	import type { Collection } from '$lib/types';
+	import type { Readable } from 'svelte/store';
+
+	export const collections: Readable<Collection[]> & {
+		load: (customFetch?: typeof fetch) => Promise<void>;
+		save: (collections: Collection[], customFetch?: typeof fetch) => Promise<void>;
+		reset: () => void;
+	};
+}
+
+declare module '$lib/types' {
+	export interface Extension {
+		id: string;
+		[key: string]: any;
+	}
+
+	export interface Extensions {
+		'com.username.myapp': Extension;
+		[key: string]: Extension;
+	}
+
+	export interface Collection {
+		id: string;
+		name: string;
+		description?: string;
+		items: CollectionItem[];
+		extensions?: Extensions;
+	}
+
+	export interface CollectionItem {
+		id: string;
+		name: string;
+		description?: string;
+		items?: TokenItem[];
+		extensions?: Extensions;
+	}
+
+	export interface TokenItem {
+		id: string;
+		name: string;
+		type: TokenType;
+		value: TokenValueType;
+		description?: string;
+		tokenData?: TokenData;
+		extensions?: Extensions;
+	}
+
+	export type TokenType = 'color' | 'typography' | 'spacing' | 'dimension';
+
+	export interface TypographyValue {
+		'font-family': string;
+		'font-size': string;
+		'font-weight': number;
+		'line-height': string;
+		'letter-spacing': string;
+	}
+
+	export interface DimensionValue {
+		value: string | number;
+		unit: string;
+	}
+
+	export type TokenValueType = string | DimensionValue | TypographyValue;
+
+	export interface TokenData {
+		type: TokenType;
+		description: string;
+		value: TokenValueType;
+		createdAt: string;
+		updatedAt: string;
+		source?: string;
+	}
+}
+
+// See https://kit.svelte.dev/docs/types#app
 // for information about these interfaces
 declare global {
 	namespace App {
 		// interface Error {}
-		// interface Locals {}
-		// interface PageData {}
-		// interface PageState {}
+		interface Locals {
+			user: {
+				isAuthenticated: boolean;
+				returnTo?: string;
+			};
+		}
+		interface PageData {
+			error?: string | null;
+			isAuthenticated: boolean;
+		}
 		// interface Platform {}
 	}
 }
 
 export {};
  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\hooks.client.ts 
+import type { HandleClientError } from '@sveltejs/kit';
+
+export const handleError: HandleClientError = ({ error, event }) => {
+  console.error('Client error:', error);
+  return {
+    message: 'An unexpected error occurred'
+  };
+};  
 E:\Projekte\Coding\github\Design-System-Docs\frontend\src\hooks.server.ts 
-import type { Handle } from '@sveltejs/kit';
-import { redirect } from '@sveltejs/kit';
+import { redirect, type Handle } from '@sveltejs/kit';
 
 export const handle: Handle = async ({ event, resolve }) => {
-  // Check if the route exists in your app
-  const route = event.route.id;
+  console.log('=== Hook Start ===');
+  console.log('URL:', event.url.toString());
   
-  // If route doesn't exist (undefined), redirect to home
-  if (!route) {
-    throw redirect(307, '/');
+  // Get auth state from cookies
+  const jwt = event.cookies.get('jwt');
+  const pathname = event.url.pathname;
+  const isProtectedRoute = pathname.includes('/(protected)/') || 
+                          pathname.startsWith('/setup') || 
+                          pathname.startsWith('/dashboard') ||
+                          pathname.startsWith('/tokens');
+  
+  console.log('Auth state:', {
+    hasJwt: !!jwt,
+    isProtectedRoute,
+    pathname
+  });
+  
+  // Set auth state in locals
+  event.locals.user = {
+    isAuthenticated: !!jwt,
+    // Only store returnTo for protected routes
+    returnTo: isProtectedRoute ? pathname : undefined
+  };
+  
+  // If accessing a protected route without auth, redirect to login
+  if (isProtectedRoute && !jwt) {
+    console.log('Protected route accessed without auth, redirecting to login');
+    // Store the return URL in a cookie
+    event.cookies.set('returnTo', pathname, {
+      path: '/',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 5 // 5 minutes expiry for security
+    });
+    
+    // Clear any existing auth cookies
+    event.cookies.delete('jwt', { path: '/' });
+    event.cookies.delete('github_token', { path: '/' });
+    event.cookies.delete('is_authenticated', { path: '/' });
+    
+    throw redirect(303, '/');
   }
-
-  return await resolve(event);
+  
+  console.log('=== Hook End ===');
+  const response = await resolve(event);
+  return response;
 };  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\auth.ts 
+export interface User {
+    id: string;
+    username: string;
+    email: string;
+  }
+  
+  export async function refreshToken() {
+    const jwt = localStorage.getItem('jwt');
+    if (!jwt) {
+      console.log('No JWT found in storage for refresh');
+      return null;
+    }
+  
+    try {
+      console.log('Refreshing token...');
+      const response = await fetch('http://localhost:1337/api/auth/refresh', {
+        headers: {
+          'Authorization': `Bearer ${jwt}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Token refresh failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        return null;
+      }
+      
+      const data = await response.json();
+      localStorage.setItem('jwt', data.jwt);
+      console.log('Token refreshed successfully');
+      return data.jwt;
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      return null;
+    }
+  }
+  
+  export async function getUser(): Promise<User | null> {
+    const jwt = localStorage.getItem('jwt');
+    if (!jwt) {
+      console.log('No JWT found in storage for user fetch');
+      return null;
+    }
+  
+    try {
+      console.log('Fetching user data...');
+      const response = await fetch('http://localhost:1337/api/users/me', {
+        headers: {
+          'Authorization': `Bearer ${jwt}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to fetch user data:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        return null;
+      }
+      
+      const userData = await response.json();
+      console.log('User data fetched successfully:', userData);
+      localStorage.setItem('user', JSON.stringify(userData));
+      return userData;
+    } catch (error) {
+      console.error('Failed to get user:', error);
+      return null;
+    }
+  }
+  
+  export async function exchangeToken(jwt: string) {
+    if (!jwt) {
+      console.error('No JWT provided for exchange');
+      throw new Error('No JWT provided');
+    }
+  
+    try {
+      console.log('Storing JWT in localStorage...');
+      localStorage.setItem('jwt', jwt);
+      console.log('JWT stored successfully');
+      return jwt;
+    } catch (error) {
+      console.error('Failed to store JWT:', error);
+      throw error;
+    }
+  }  
 E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\index.ts 
 // place files you want to import through the `$lib` alias in this folder.
  
-E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\+layout.ts 
-import { browser } from '$app/environment';
-import { redirect } from '@sveltejs/kit';
-import type { LayoutLoad } from './$types';
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\types.ts 
+export interface Extension {
+  id: string;
+  [key: string]: any;
+}
 
-export const load: LayoutLoad = async () => {
-  if (browser) {
-    const user = localStorage.getItem('user');
-    
-    if (!user) {
-      throw redirect(307, '/');
+export interface Extensions {
+  'com.username.myapp': Extension;
+  [key: string]: Extension;
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  description?: string;
+  items: CollectionItem[];
+  extensions?: Extensions;
+}
+
+export interface CollectionItem {
+  id: string;
+  name: string;
+  description?: string;
+  items?: TokenItem[];
+  extensions?: Extensions;
+}
+
+export interface TokenItem {
+  id: string;
+  name: string;
+  type: TokenType;
+  value: TokenValueType;
+  description?: string;
+  tokenData?: TokenData;
+  extensions?: Extensions;
+}
+
+export type TokenType = 'color' | 'typography' | 'spacing' | 'dimension';
+
+export interface TypographyValue {
+  'font-family': string;
+  'font-size': string;
+  'font-weight': number;
+  'line-height': string;
+  'letter-spacing': string;
+}
+
+export interface DimensionValue {
+  value: string | number;
+  unit: string;
+}
+
+export type TokenValueType = string | DimensionValue | TypographyValue;
+
+export interface TokenData {
+  type: TokenType;
+  description: string;
+  value: TokenValueType;
+  createdAt: string;
+  updatedAt: string;
+  source?: string;
+}  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\utils.ts 
+export function cn(...classes: (string | boolean | undefined | null)[]) {
+  return classes.filter(Boolean).join(' ');
+}  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\config\routes.ts 
+export const routes = {
+  // Public routes
+  LOGIN: '/',
+  
+  // Protected routes
+  SETUP: '/setup',
+  DASHBOARD: '/dashboard',
+  TOKENS: '/tokens'
+} as const;
+
+// Default route after authentication if no returnTo is specified
+export const DEFAULT_AUTH_REDIRECT = routes.SETUP;  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\services\api.ts 
+import type { Collection, TokenItem, TokenData, TokenType, TokenValueType } from '$lib/types';
+
+interface RawToken {
+  id: string;
+  name: string;
+  type: TokenType;
+  value: TokenValueType;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+  source: string;
+}
+
+class CollectionsAPI {
+  private static instance: CollectionsAPI;
+  private cache: Map<string, Collection[]> = new Map();
+  private cacheExpiry: Map<string, number> = new Map();
+  private cacheDuration = 5 * 60 * 1000; // 5 minutes
+
+  private constructor() {}
+
+  static getInstance(): CollectionsAPI {
+    if (!CollectionsAPI.instance) {
+      CollectionsAPI.instance = new CollectionsAPI();
     }
+    return CollectionsAPI.instance;
+  }
+
+  private isCacheValid(key: string): boolean {
+    const expiry = this.cacheExpiry.get(key);
+    return expiry !== undefined && Date.now() < expiry;
+  }
+
+  private setCache(key: string, data: Collection[]): void {
+    this.cache.set(key, data);
+    this.cacheExpiry.set(key, Date.now() + this.cacheDuration);
+  }
+
+  async getCollections(): Promise<Collection[]> {
+    console.log('API: Fetching collections');
 
     try {
-      return {
-        user: JSON.parse(user)
-      };
-    } catch (e) {
-      console.error('Error parsing user data:', e);
-      localStorage.removeItem('user');
-      throw redirect(307, '/');
+      const response = await fetch('/api/collections');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const collections = await response.json();
+      console.log('API: Successfully fetched collections');
+
+      // If collections is already in the correct format, return it directly
+      if (Array.isArray(collections)) {
+        return collections;
+      }
+
+      // Otherwise, transform the data into our Collection format
+      return Object.entries(collections).map(([id, collection]) => ({
+        id,
+        name: id,
+        items: [],
+        ...(collection as Partial<Collection>)
+      }));
+    } catch (error) {
+      console.error('API: Error fetching collections:', error);
+      throw error;
     }
   }
+
+  async saveCollections(collections: Collection[], customFetch?: typeof window.fetch): Promise<void> {
+    console.log('API: Saving collections');
+    const fetchFn = customFetch || window.fetch;
+
+    try {
+      const response = await fetchFn('/api/collections', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(collections),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      console.log('API: Successfully saved collections');
+    } catch (error) {
+      console.error('API: Error saving collections:', error);
+      throw error;
+    }
+  }
+
+  async createToken(tokenData: TokenData): Promise<TokenItem> {
+    try {
+      const response = await fetch('/api/tokens', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(tokenData),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const token: TokenItem = {
+        id: crypto.randomUUID(),
+        name: data.type,
+        type: data.type,
+        value: data.value,
+        description: data.description,
+        tokenData: {
+          type: data.type,
+          value: data.value,
+          description: data.description,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+          source: data.source
+        }
+      };
+
+      return token;
+    } catch (error) {
+      console.error('API: Error creating token:', error);
+      throw error;
+    }
+  }
+}
+
+export default CollectionsAPI.getInstance();  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\stores\collections.ts 
+import { writable } from 'svelte/store';
+import type { Collection } from '$lib/types';
+import collectionsAPI from '../services/api';
+
+function createCollectionsStore() {
+  const { subscribe, set } = writable<Collection[]>([]);
+  let initialized = false;
+  let initializationPromise: Promise<void> | null = null;
+
+  async function load() {
+    if (initialized) {
+      console.log('Collections: Already initialized');
+      return;
+    }
+
+    if (initializationPromise) {
+      console.log('Collections: Initialization in progress');
+      return initializationPromise;
+    }
+
+    console.log('Collections: Starting initialization');
+    initializationPromise = collectionsAPI.getCollections()
+      .then(collections => {
+        set(collections);
+        initialized = true;
+        console.log('Collections: Initialization successful');
+      })
+      .catch(error => {
+        console.error('Collections: Initialization failed', error);
+        throw error;
+      })
+      .finally(() => {
+        initializationPromise = null;
+      });
+
+    return initializationPromise;
+  }
+
+  async function save(collections: Collection[], fetch?: typeof window.fetch) {
+    try {
+      console.log('Collections: Saving changes');
+      await collectionsAPI.saveCollections(collections, fetch);
+      set(collections);
+      console.log('Collections: Save successful');
+    } catch (error) {
+      console.error('Collections: Save failed', error);
+      throw error;
+    }
+  }
+
+  return {
+    subscribe,
+    load,
+    save,
+    isInitialized: () => initialized
+  };
+}
+
+export const collections = createCollectionsStore();  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\stores\uiState.ts 
+import { browser } from '$app/environment';
+import { writable, derived } from 'svelte/store';
+import type { CollectionUIState } from '../types';
+
+const COLLECTIONS_UI_STATE_KEY = 'collections_ui_state';
+
+// Load initial state from localStorage
+function loadUIState(): CollectionUIState[] {
+  if (!browser) return [];
+  try {
+    const stored = localStorage.getItem(COLLECTIONS_UI_STATE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch (error) {
+    console.error('Error loading UI state:', error);
+    return [];
+  }
+}
+
+// Create store
+const uiState = writable<CollectionUIState[]>(loadUIState());
+
+// Create a derived store for collection states
+export const collectionStates = derived(uiState, $uiState => {
+  return {
+    getState: (id: string): CollectionUIState => {
+      return $uiState.find(state => state.id === id) || { id, isOpen: false };
+    }
+  };
+});
+
+// Subscribe to changes and save to localStorage
+if (browser) {
+  uiState.subscribe((state) => {
+    try {
+      localStorage.setItem(COLLECTIONS_UI_STATE_KEY, JSON.stringify(state));
+    } catch (error) {
+      console.error('Error saving UI state:', error);
+    }
+  });
+}
+
+export function setCollectionOpen(id: string, isOpen: boolean) {
+  uiState.update(states => {
+    const existingIndex = states.findIndex(state => state.id === id);
+    if (existingIndex >= 0) {
+      const newStates = [...states];
+      newStates[existingIndex] = { ...states[existingIndex], isOpen };
+      return newStates;
+    }
+    return [...states, { id, isOpen }];
+  });
+}  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\utils\api.ts 
+/**
+ * Helper function for making authenticated API calls
+ */
+export async function fetchApi(endpoint: string, options: RequestInit = {}) {
+    const jwt = localStorage.getItem('jwt');
+    
+    if (!jwt) {
+        throw new Error('No authentication token found');
+    }
+
+    const headers = new Headers(options.headers);
+    headers.set('Authorization', `Bearer ${jwt}`);
+
+    const response = await fetch(`/api/${endpoint.replace(/^\//, '')}`, {
+        ...options,
+        headers
+    });
+
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+    }
+
+    return response.json();
+}
+
+/**
+ * Get collections data
+ */
+export async function getCollections() {
+    return fetchApi('collections');
+}
+
+/**
+ * Update collections data
+ */
+export async function updateCollections(collections: any) {
+    return fetchApi('collections', {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(collections)
+    });
+}  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+layout.server.ts 
+import type { LayoutServerLoad } from './$types';
+
+export const load: LayoutServerLoad = async ({ cookies }) => {
+  const jwt = cookies.get('jwt');
+  const returnTo = cookies.get('returnTo');
   
   return {
-    user: null
+    isAuthenticated: !!jwt,
+    returnTo
   };
 };  
-E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\dashboard\+page.ts 
-import type { PageLoad } from './$types';
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+page.server.ts 
+import { redirect } from '@sveltejs/kit';
+import type { PageServerLoad } from './$types';
+import { routes, DEFAULT_AUTH_REDIRECT } from '$lib/config/routes';
 
-export const load: PageLoad = async () => {
-  // The layout handles auth check
-  return {};
+export const load: PageServerLoad = async ({ cookies, url, locals }) => {
+  console.log('=== Server Load Start ===');
+  console.log('URL:', url.toString());
+  console.log('Search params:', Object.fromEntries(url.searchParams));
+  console.log('Auth state:', locals.user);
+
+  // Handle Strapi callback with tokens
+  if (url.searchParams.has('access_token') && url.searchParams.has('jwt')) {
+    console.log('Strapi callback detected with tokens');
+    
+    const jwt = url.searchParams.get('jwt');
+    const githubToken = url.searchParams.get('access_token');
+    
+    if (!jwt || !githubToken) {
+      console.error('Missing required tokens');
+      return {
+        error: 'Authentication failed. Missing required tokens.',
+        isAuthenticated: false
+      };
+    }
+
+    console.log('Setting cookies...');
+    cookies.set('jwt', jwt, { 
+      path: '/',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+    
+    cookies.set('github_token', githubToken, {
+      path: '/',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+
+    cookies.set('is_authenticated', 'true', {
+      path: '/',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+
+    console.log('Cookies set:', { jwt: jwt.slice(0, 10) + '...', github: githubToken.slice(0, 10) + '...' });
+    throw redirect(303, DEFAULT_AUTH_REDIRECT);
+  }
+
+  // Only redirect if explicitly on the login page
+  if (locals.user?.isAuthenticated && url.pathname === routes.LOGIN) {
+    throw redirect(303, DEFAULT_AUTH_REDIRECT);
+  }
+
+  console.log('=== Server Load End ===');
+  return {
+    error: null,
+    isAuthenticated: locals.user?.isAuthenticated || false
+  };
+};  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+page.ts 
+import type { PageLoad } from './$types';
+import { browser } from '$app/environment';
+import { goto } from '$app/navigation';
+
+export const load: PageLoad = async ({ data }) => {
+  console.log('=== Page Load Start ===');
+  console.log('Browser environment:', browser);
+  console.log('Page load data:', {
+    isAuthenticated: data.isAuthenticated,
+    hasError: !!data.error
+  });
+
+  // Only handle auth state if in browser
+  if (browser) {
+    console.log('Checking auth state...');
+    
+    if (data.isAuthenticated) {
+      console.log('User is authenticated');
+      // You can add additional client-side setup here if needed
+    } else {
+      console.log('User is not authenticated');
+      // Clear any stale auth state from localStorage
+      localStorage.removeItem('user');
+    }
+  } else {
+    console.log('Server-side load, skipping auth check');
+  }
+  
+  console.log('=== Page Load End ===');
+  return {
+    ...data
+  };
+};  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\+layout.server.ts 
+import type { LayoutServerLoad } from './$types';
+
+export const load: LayoutServerLoad = async ({ locals }) => {
+  return {
+    user: locals.user
+  };
+};  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\+layout.ts 
+import type { LayoutLoad } from './$types';
+
+export const load: LayoutLoad = async ({ data }) => {
+  return data;
 };  
 E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\setup\+page.ts 
 import type { PageLoad } from './$types';
+import { redirect } from '@sveltejs/kit';
 
-export const load: PageLoad = async () => {
-  // The layout handles auth check
-  return {};
+export const load: PageLoad = async ({ parent }) => {
+  const { user } = await parent();
+  
+  if (!user?.isAuthenticated) {
+    throw redirect(303, '/');
+  }
+  
+  return {
+    user
+  };
+};  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\api\collections\+server.ts 
+import { json } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const dataPath = path.join(process.cwd(), 'src/lib/data/collections.json');
+
+// Cache for collections data
+let collectionsCache: any = null;
+let lastReadTime = 0;
+const CACHE_TTL = 5000; // 5 seconds
+
+// Initialize collections file if it doesn't exist
+if (!fs.existsSync(dataPath)) {
+    fs.writeFileSync(dataPath, JSON.stringify({
+        "Primitives": {
+            "description": "All base (primitive) tokens go here.",
+            "extensions": {
+                "com.username.myapp": {
+                    "id": crypto.randomUUID()
+                }
+            }
+        }
+    }, null, 2));
+}
+
+function readCollections() {
+    const now = Date.now();
+    
+    // Return cached data if it's still valid
+    if (collectionsCache && (now - lastReadTime) < CACHE_TTL) {
+        return collectionsCache;
+    }
+
+    try {
+        const data = fs.readFileSync(dataPath, 'utf8');
+        collectionsCache = JSON.parse(data);
+        lastReadTime = now;
+        return collectionsCache;
+    } catch (error) {
+        console.error('API: Error reading collections:', error);
+        return {};
+    }
+}
+
+function writeCollections(collections: Record<string, any>) {
+    try {
+        if (typeof collections !== 'object' || collections === null) {
+            console.error('API: Invalid collections data - not an object');
+            return false;
+        }
+
+        fs.writeFileSync(dataPath, JSON.stringify(collections, null, 2));
+        // Update cache
+        collectionsCache = collections;
+        lastReadTime = Date.now();
+        return true;
+    } catch (error) {
+        console.error('API: Error writing collections:', error);
+        return false;
+    }
+}
+
+export const GET: RequestHandler = async () => {
+    const collections = readCollections();
+    return json(collections);
+};
+
+export const PUT: RequestHandler = async ({ request }) => {
+    const collections = await request.json();
+    if (writeCollections(collections)) {
+        return json({ success: true });
+    }
+    return json({ success: false }, { status: 500 });
 };  
