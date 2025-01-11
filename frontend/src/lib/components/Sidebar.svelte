@@ -4,9 +4,9 @@
   import { dndzone, type DndEvent } from 'svelte-dnd-action';
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
-  import type { Collection, CollectionItem, TokenType } from '../types';
+  import type { Collection, CollectionItem } from '../types';
   import { collectionStates, setCollectionOpen } from '../stores/uiState';
-  import { collections } from '../stores/collections';
+  import { collectionsStore } from '../stores/collections';
 
   let activeDropdown: string | null = $state(null);
   let dragActiveCollection: string | null = $state(null);
@@ -24,6 +24,99 @@
 
   function createUniqueId() {
     return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  async function handleCollectionDndConsider(event: CustomEvent<DndEvent<Collection>>) {
+    const { items: newCollections } = event.detail;
+    // Update the store immediately to reflect the new order
+    collectionsStore.update(collections => newCollections);
+  }
+
+  async function handleCollectionDndFinalize(event: CustomEvent<DndEvent<Collection>>) {
+    const { items: newCollections } = event.detail;
+    // Save the final order to the store and persist it
+    await collectionsStore.save(newCollections);
+  }
+
+  async function handleItemsDndConsider(event: CustomEvent<DndEvent<CollectionItem>>, collectionId: string) {
+    const { items: newItems } = event.detail;
+    collectionsStore.update(collections => 
+      collections.map(collection =>
+        collection.id === collectionId
+          ? { ...collection, items: newItems }
+          : collection
+      )
+    );
+  }
+
+  async function handleItemsDndFinalize(event: CustomEvent<DndEvent<CollectionItem>>, collectionId: string) {
+    const { items: newItems } = event.detail;
+    const updatedCollections = $collectionsStore.map(collection =>
+      collection.id === collectionId
+        ? { ...collection, items: newItems }
+        : collection
+    );
+    await collectionsStore.save(updatedCollections);
+  }
+
+  function handleCollectionDragStart() {
+    if (isDraggingItem) return false;
+  }
+
+  function handleItemDragStart() {
+    isDraggingItem = true;
+  }
+
+  function handleItemDragEnd() {
+    isDraggingItem = false;
+  }
+
+  function openCreateModal() {
+    isCreateModalOpen = true;
+    newCollectionName = '';
+  }
+
+  function closeCreateModal() {
+    isCreateModalOpen = false;
+    newCollectionName = '';
+  }
+
+  async function createNewCollection() {
+    if (!newCollectionName.trim()) return;
+
+    const newCollection: Collection = {
+      id: createUniqueId(),
+      name: newCollectionName.trim(),
+      items: []
+    };
+
+    const updatedCollections = [...$collectionsStore, newCollection];
+    await collectionsStore.save(updatedCollections);
+    closeCreateModal();
+    // Navigate to the new collection
+    goto(`/dashboard/${newCollection.id}`);
+    setCollectionOpen(newCollection.id, true);
+  }
+
+  function handleCreateKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      createNewCollection();
+    }
+  }
+
+  function handleModalClick(event: MouseEvent) {
+    // Only close if clicking the backdrop (dialog element itself)
+    if (event.target === modalElement) {
+      closeCreateModal();
+    }
+  }
+
+  function handleModalKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault(); // Prevent default dialog close
+      closeCreateModal();
+    }
   }
 
   function toggleDropdown(id: string, event: Event) {
@@ -57,156 +150,9 @@
     activeDropdown = null;
   }
 
-  function saveCollectionName(id: string, event: Event) {
-    const input = event.target as HTMLInputElement;
-    const newName = input.value.trim();
-    
-    if (newName) {
-      const updatedCollections = $collections.map(collection =>
-        collection.id === id
-          ? { ...collection, name: newName }
-          : collection
-      );
-      collections.save(updatedCollections, $page.data.fetch);
-    }
-    editingCollectionId = null;
-  }
-
-  async function addNewItem(collectionId: string) {
-    const collection = $collections.find(c => c.id === collectionId);
-    if (!collection) return;
-
-    const newItem = {
-      id: createUniqueId(),
-      name: 'New Item',
-      items: []
-    };
-
-    const updatedCollections = $collections.map(c =>
-      c.id === collectionId
-        ? { 
-            ...c, 
-            items: [...c.items, newItem]
-          }
-        : c
-    );
-    await collections.save(updatedCollections, $page.data.fetch);
-    // Navigate to the new item
-    goto(`/${newItem.id}`);
-    setCollectionOpen(collectionId, true);
-    activeDropdown = null;
-  }
-
   function startEditingItem(collectionId: string, itemId: string) {
     editingItemId = itemId;
     activeDropdown = null;
-  }
-
-  function saveItemName(collectionId: string, itemId: string, event: Event) {
-    const input = event.target as HTMLInputElement;
-    const newName = input.value.trim();
-    
-    if (newName) {
-      const updatedCollections = $collections.map(collection =>
-        collection.id === collectionId
-          ? {
-              ...collection,
-              items: collection.items.map(item =>
-                item.id === itemId
-                  ? { ...item, name: newName }
-                  : item
-              )
-            }
-          : collection
-      );
-      collections.save(updatedCollections, $page.data.fetch);
-    }
-    editingItemId = null;
-  }
-
-  function deleteCollection(id: string) {
-    if (confirm('Are you sure you want to delete this collection?')) {
-      const updatedCollections = $collections.filter(collection => collection.id !== id);
-      collections.save(updatedCollections, $page.data.fetch);
-    }
-  }
-
-  function deleteItem(collectionId: string, itemId: string) {
-    if (confirm('Are you sure you want to delete this item?')) {
-      const updatedCollections = $collections.map(collection =>
-        collection.id === collectionId
-          ? {
-              ...collection,
-              items: collection.items.filter(item => item.id !== itemId)
-            }
-          : collection
-      );
-      collections.save(updatedCollections, $page.data.fetch);
-    }
-  }
-
-  function handleCollectionDndConsider(event: CustomEvent<DndEvent<Collection>>) {
-    const updatedCollections = event.detail.items.map(item => ({
-      ...item,
-      id: item.id || createUniqueId(),
-      items: item.items || []
-    }));
-    collections.save(updatedCollections, $page.data.fetch);
-  }
-
-  function handleCollectionDndFinalize(event: CustomEvent<DndEvent<Collection>>) {
-    const updatedCollections = event.detail.items.map(item => ({
-      ...item,
-      id: item.id || createUniqueId(),
-      items: item.items || []
-    }));
-    collections.save(updatedCollections, $page.data.fetch);
-  }
-
-  function handleItemsDndConsider(event: CustomEvent<DndEvent<CollectionItem>>, collectionId: string) {
-    dragActiveCollection = collectionId;
-    const updatedCollections = $collections.map(collection =>
-      collection.id === collectionId
-        ? {
-            ...collection,
-            items: event.detail.items.map(item => ({
-              ...item,
-              id: item.id || createUniqueId(),
-              items: item.items || []
-            }))
-          }
-        : collection
-    );
-    collections.save(updatedCollections, $page.data.fetch);
-  }
-
-  function handleItemsDndFinalize(event: CustomEvent<DndEvent<CollectionItem>>, collectionId: string) {
-    dragActiveCollection = null;
-    const updatedCollections = $collections.map(collection =>
-      collection.id === collectionId
-        ? {
-            ...collection,
-            items: event.detail.items.map(item => ({
-              ...item,
-              id: item.id || createUniqueId(),
-              items: item.items || []
-            }))
-          }
-        : collection
-    );
-    collections.save(updatedCollections, $page.data.fetch);
-  }
-
-  function handleCollectionDragStart() {
-    if (isDraggingItem) return false;
-  }
-
-  function handleItemDragStart() {
-    isDraggingItem = true;
-  }
-
-  function handleItemDragEnd() {
-    isDraggingItem = false;
   }
 
   function handleCollectionKeydown(event: KeyboardEvent, id: string) {
@@ -242,381 +188,338 @@
     }
   }
 
-  function handleModalClick(event: MouseEvent) {
-    // Only close if clicking the backdrop (dialog element itself)
-    if (event.target === modalElement) {
-      closeCreateModal();
-    }
-  }
-
-  function handleModalKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      event.preventDefault(); // Prevent default dialog close
-      closeCreateModal();
-    }
-  }
-
-  function openCreateModal() {
-    isCreateModalOpen = true;
-    newCollectionName = '';
-    // Wait for the next tick to ensure the dialog element is in the DOM
-    setTimeout(() => {
-      if (modalElement) {
-        modalElement.showModal();
-      }
-    }, 0);
-  }
-
-  function closeCreateModal() {
-    if (modalElement) {
-      modalElement.close();
-    }
-    isCreateModalOpen = false;
-    newCollectionName = '';
-  }
-
-  async function createNewCollection() {
-    if (!newCollectionName.trim()) return;
+  async function saveCollectionName(id: string, event: Event) {
+    const input = event.target as HTMLInputElement;
+    const newName = input.value.trim();
     
-    const newCollection: Collection = {
+    if (newName) {
+      const updatedCollections = $collectionsStore.map((collection: Collection) =>
+        collection.id === id
+          ? { ...collection, name: newName }
+          : collection
+      );
+      await collectionsStore.save(updatedCollections);
+    }
+    editingCollectionId = null;
+  }
+
+  async function saveItemName(collectionId: string, itemId: string, event: Event) {
+    const input = event.target as HTMLInputElement;
+    const newName = input.value.trim();
+    
+    if (newName) {
+      const updatedCollections = $collectionsStore.map((collection: Collection) =>
+        collection.id === collectionId
+          ? {
+              ...collection,
+              items: collection.items.map((item: CollectionItem) =>
+                item.id === itemId
+                  ? { ...item, name: newName }
+                  : item
+              )
+            }
+          : collection
+      );
+      await collectionsStore.save(updatedCollections);
+    }
+    editingItemId = null;
+  }
+
+  async function addNewItem(collectionId: string) {
+    const collection = $collectionsStore.find((c: Collection) => c.id === collectionId);
+    if (!collection) return;
+
+    const newItem: CollectionItem = {
       id: createUniqueId(),
-      name: newCollectionName.trim(),
+      name: 'New Item',
       items: []
     };
 
-    const updatedCollections = [...$collections, newCollection];
-    await collections.save(updatedCollections, $page.data.fetch);
-    closeCreateModal();
-    // Navigate to the new collection
-    goto(`/${newCollection.id}`);
-    setCollectionOpen(newCollection.id, true);
+    const updatedCollections = $collectionsStore.map((c: Collection) =>
+      c.id === collectionId
+        ? { 
+            ...c, 
+            items: [...c.items, newItem]
+          }
+        : c
+    );
+    await collectionsStore.save(updatedCollections);
+    // Navigate to the new item
+    goto(`/dashboard/${collectionId}/${newItem.id}`);
+    setCollectionOpen(collectionId, true);
+    activeDropdown = null;
   }
 
-  function handleCreateKeydown(event: KeyboardEvent) {
-    if (event.key === 'Enter') {
-      createNewCollection();
-    } else if (event.key === 'Escape') {
-      closeCreateModal();
+  async function deleteCollection(id: string) {
+    const updatedCollections = $collectionsStore.filter((collection: Collection) => collection.id !== id);
+    await collectionsStore.save(updatedCollections);
+    // If we're on the current collection's page, navigate to dashboard
+    if ($page.url.pathname.includes(id)) {
+      goto('/dashboard');
     }
   }
 
-  function handleNavigation(id: string, event: MouseEvent) {
-    event.preventDefault();
-    goto(`/${id}`);
+  async function deleteItem(collectionId: string, itemId: string) {
+    const updatedCollections = $collectionsStore.map((collection: Collection) =>
+      collection.id === collectionId
+        ? {
+            ...collection,
+            items: collection.items.filter((item: CollectionItem) => item.id !== itemId)
+          }
+        : collection
+    );
+    await collectionsStore.save(updatedCollections);
+    // If we're on the current item's page, navigate to collection
+    if ($page.url.pathname.includes(itemId)) {
+      goto(`/dashboard/${collectionId}`);
+    }
   }
 </script>
 
 <aside class="sidebar">
-  <nav class="nav-menu">
-    <div class="collections-section">
-      <div class="section-header">
-        <h2 class="section-title">Collections</h2>
-        <button class="icon-button" onclick={openCreateModal} title="Create new collection">
-          +
-        </button>
-      </div>
-      <section
-        use:dndzone={{
-          items: $collections,
-          dragDisabled: isDraggingItem,
-          flipDurationMs: 150,
-          dropTargetStyle: {
-            outline: '2px dashed var(--color-card-border)'
-          },
-          type: 'collections'
-        }}
-        onconsider={handleCollectionDndConsider}
-        onfinalize={handleCollectionDndFinalize}
-      >
-        {#each $collections as collection (collection.id)}
-          <div class="collection-item" data-collection-id={collection.id}>
-            <div class="collection-header">
-              <div 
-                class="collection-trigger"
-                role="button"
-                tabindex="0"
-              >
-                <div 
-                  class="chevron" 
-                  class:open={$collectionStates.getState(collection.id).isOpen}
+  <div class="sidebar-header">
+    <button class="add-collection-button" onclick={openCreateModal}>
+      Add Collection
+    </button>
+  </div>
+
+  <div class="collections">
+    <section
+      use:dndzone={{
+        items: $collectionsStore,
+        dragDisabled: isDraggingItem,
+        flipDurationMs: 150
+      }}
+      onconsider={handleCollectionDndConsider}
+      onfinalize={handleCollectionDndFinalize}
+    >
+      {#each $collectionsStore as collection (collection.id)}
+        <div class="collection-item" data-collection-id={collection.id}>
+          <div class="collection-header">
+            <div
+              class="collection-button"
+              role="button"
+              tabindex="0"
+              onclick={() => goto(`/dashboard/${collection.id}`)}
+              onkeydown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  goto(`/dashboard/${collection.id}`);
+                }
+              }}
+            >
+              <span class="chevron" class:open={$collectionStates.getState(collection.id).isOpen}>
+                <button
+                  class="chevron-button"
                   onclick={(e) => handleChevronClick(e, collection.id)}
                   onkeydown={(e) => handleCollectionKeydown(e, collection.id)}
-                  role="button"
-                  tabindex="0"
-                  aria-label={$collectionStates.getState(collection.id).isOpen ? "Collapse collection" : "Expand collection"}
-                  aria-expanded={$collectionStates.getState(collection.id).isOpen}
+                  aria-label={$collectionStates.getState(collection.id).isOpen ? "Collapse section" : "Expand section"}
                 >
-                  {$collectionStates.getState(collection.id).isOpen ? '▼' : '▶'}
-                </div>
-                {#if editingCollectionId === collection.id}
-                  <input
-                    type="text"
-                    class="collection-name-input"
-                    value={collection.name}
-                    onblur={(e) => saveCollectionName(collection.id, e)}
-                    onkeydown={(e) => handleKeydown(e, collection.id)}
-                    use:focusOnMount
-                  />
-                {:else}
-                  <a 
-                    href={`/${collection.id}`} 
-                    class="collection-name-link"
-                    onclick={(e) => handleNavigation(collection.id, e)}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    role="img"
+                    aria-hidden="true"
                   >
-                    {collection.name}
-                  </a>
-                {/if}
-              </div>
-              <div class="collection-actions">
-                <button 
-                  class="icon-button more-button"
-                  onclick={(e) => toggleDropdown(collection.id, e)}
-                  title="More options"
-                  data-active={activeDropdown === collection.id}
-                >
-                  ⋮
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
                 </button>
-                {#if activeDropdown === collection.id}
-                  <div class="dropdown-menu">
-                    <button 
-                      class="dropdown-item"
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        startEditingCollection(collection.id);
-                        activeDropdown = null;
-                      }}
-                    >
-                      Rename Collection
-                    </button>
-                    <button 
-                      class="dropdown-item"
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        addNewItem(collection.id);
-                        activeDropdown = null;
-                      }}
-                    >
-                      Add Item
-                    </button>
-                    <button 
-                      class="dropdown-item delete"
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        deleteCollection(collection.id);
-                        activeDropdown = null;
-                      }}
-                    >
-                      Delete Collection
-                    </button>
-                  </div>
-                {/if}
-              </div>
+              </span>
+              {#if editingCollectionId === collection.id}
+                <input
+                  type="text"
+                  value={collection.name}
+                  onblur={(e) => saveCollectionName(collection.id, e)}
+                  onkeydown={(e) => handleKeydown(e, collection.id)}
+                  use:focusOnMount
+                />
+              {:else}
+                <span class="collection-name">{collection.name}</span>
+              {/if}
             </div>
-            {#if $collectionStates.getState(collection.id).isOpen}
-              <div
-                class="collection-items dndzone"
-                class:active={dragActiveCollection === collection.id}
+            <button
+              class="more-button"
+              onclick={(e) => toggleDropdown(collection.id, e)}
+              aria-label="More options"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                role="img"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="1" />
+                <circle cx="12" cy="5" r="1" />
+                <circle cx="12" cy="19" r="1" />
+              </svg>
+            </button>
+            {#if activeDropdown === collection.id}
+              <div class="dropdown-menu">
+                <button onclick={() => startEditingCollection(collection.id)}>
+                  Rename
+                </button>
+                <button onclick={() => addNewItem(collection.id)}>
+                  Add Item
+                </button>
+                <button onclick={() => deleteCollection(collection.id)}>
+                  Delete
+                </button>
+              </div>
+            {/if}
+          </div>
+
+          {#if $collectionStates.getState(collection.id).isOpen}
+            <div class="collection-items">
+              <section
                 use:dndzone={{
                   items: collection.items,
                   dragDisabled: false,
-                  dropFromOthersDisabled: true,
-                  flipDurationMs: 150,
-                  dropTargetStyle: {
-                    outline: '2px dashed var(--color-card-border)'
-                  },
-                  type: `items-${collection.id}`
+                  flipDurationMs: 150
                 }}
                 onconsider={(e) => handleItemsDndConsider(e, collection.id)}
-                onfinalize={(e) => {
-                  handleItemsDndFinalize(e, collection.id);
-                  handleItemDragEnd();
-                }}
+                onfinalize={(e) => handleItemsDndFinalize(e, collection.id)}
               >
                 {#each collection.items as item (item.id)}
-                  <div 
-                    class="item-wrapper"
-                    class:dragging={dragActiveCollection === collection.id}
-                    data-item-id={item.id}
-                  >
-                    {#if editingItemId === item.id}
-                      <div class="nav-link">
+                  <div class="item">
+                    <a
+                      href={`/dashboard/${collection.id}/${item.id}`}
+                      class="item-link"
+                      class:active={$page.url.pathname.includes(item.id)}
+                    >
+                      {#if editingItemId === item.id}
                         <input
                           type="text"
-                          class="item-name-input"
                           value={item.name}
                           onblur={(e) => saveItemName(collection.id, item.id, e)}
                           onkeydown={(e) => handleItemKeydown(e, collection.id, item.id)}
                           use:focusOnMount
                         />
-                      </div>
-                    {:else}
-                      <a 
-                        href={`/${item.id}`} 
-                        class="nav-link"
-                        class:active={$page.url.pathname === `/${item.id}`}
-                        onclick={(e) => handleNavigation(item.id, e)}
+                      {:else}
+                        <span class="item-name">{item.name}</span>
+                      {/if}
+                    </a>
+                    <button
+                      class="more-button"
+                      onclick={(e) => toggleDropdown(item.id, e)}
+                      aria-label="More options"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        role="img"
+                        aria-hidden="true"
                       >
-                        <span>{item.name}</span>
-                      </a>
-                      <div class="item-actions">
-                        <button 
-                          class="icon-button more-button"
-                          onclick={(e) => toggleDropdown(`${collection.id}-${item.id}`, e)}
-                          title="More options"
-                          data-active={activeDropdown === `${collection.id}-${item.id}`}
-                        >
-                          ⋮
+                        <circle cx="12" cy="12" r="1" />
+                        <circle cx="12" cy="5" r="1" />
+                        <circle cx="12" cy="19" r="1" />
+                      </svg>
+                    </button>
+                    {#if activeDropdown === item.id}
+                      <div class="dropdown-menu">
+                        <button onclick={() => startEditingItem(collection.id, item.id)}>
+                          Rename
                         </button>
-                        {#if activeDropdown === `${collection.id}-${item.id}`}
-                          <div class="dropdown-menu">
-                            <button 
-                              class="dropdown-item"
-                              onclick={(e) => {
-                                e.stopPropagation();
-                                startEditingItem(collection.id, item.id);
-                                activeDropdown = null;
-                              }}
-                            >
-                              Rename Item
-                            </button>
-                            <button 
-                              class="dropdown-item delete"
-                              onclick={(e) => {
-                                e.stopPropagation();
-                                deleteItem(collection.id, item.id);
-                                activeDropdown = null;
-                              }}
-                            >
-                              Delete Item
-                            </button>
-                          </div>
-                        {/if}
+                        <button onclick={() => deleteItem(collection.id, item.id)}>
+                          Delete
+                        </button>
                       </div>
                     {/if}
                   </div>
                 {/each}
-              </div>
-            {/if}
-          </div>
-        {/each}
-      </section>
-    </div>
-  </nav>
+              </section>
+            </div>
+          {/if}
+        </div>
+      {/each}
+    </section>
+  </div>
 </aside>
 
 {#if isCreateModalOpen}
-  <div 
-    class="modal-wrapper"
-    role="button"
-    tabindex="0"
-    onclick={handleModalClick}
-    onkeydown={handleModalKeydown}
-    aria-label="Close modal"
+  <dialog
+    class="modal"
+    bind:this={modalElement}
+    open
+    aria-labelledby="modal-title"
+    aria-modal="true"
   >
-    <dialog 
-      class="modal-backdrop"
-      aria-labelledby="modal-title"
-      bind:this={modalElement}
+    <div 
+      class="modal-content"
+      onclick={handleModalClick}
+      onkeydown={handleModalKeydown}
+      role="presentation"
     >
-      <form 
-        class="modal"
-        method="dialog"
-        onsubmit={(e) => {
-          e.preventDefault();
-          if (newCollectionName.trim()) {
-            createNewCollection();
-          }
-        }}
-      >
-        <h2 id="modal-title" class="modal-title">Create New Collection</h2>
-        <input
-          type="text"
-          class="modal-input"
-          placeholder="Collection name"
-          bind:value={newCollectionName}
-          onkeydown={handleCreateKeydown}
-          aria-label="Collection name"
-          use:focusOnMount
-        />
-        <div class="modal-actions">
-          <button 
-            type="button"
-            class="modal-button secondary" 
-            onclick={closeCreateModal}
-          >
-            Cancel
-          </button>
-          <button 
-            type="submit"
-            class="modal-button primary" 
-            disabled={!newCollectionName.trim()}
-          >
-            Create
-          </button>
-        </div>
-      </form>
-    </dialog>
-  </div>
+      <h2 id="modal-title">Create Collection</h2>
+      <input
+        type="text"
+        bind:value={newCollectionName}
+        placeholder="Collection name"
+        onkeydown={handleCreateKeydown}
+      />
+      <div class="modal-actions">
+        <button onclick={closeCreateModal}>Cancel</button>
+        <button onclick={createNewCollection}>Create</button>
+      </div>
+    </div>
+  </dialog>
 {/if}
 
 <style>
   .sidebar {
     width: 260px;
-    background-color: var(--color-card);
+    background: var(--color-card);
     border-right: 1px solid var(--color-card-border);
-    padding: var(--spacing-4);
-    height: 100vh;
-    overflow-y: auto;
-  }
-
-  .nav-menu {
     display: flex;
     flex-direction: column;
-    height: 100%;
-  }
-
-  .collections-section {
-    flex: 1;
-  }
-
-  .section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--spacing-2) var(--spacing-4);
-    margin-bottom: var(--spacing-2);
-  }
-
-  .section-title {
-    font-size: var(--font-size-md);
-    font-weight: 600;
-    color: var(--color-text-primary);
-    margin: 0;
-  }
-
-  .icon-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 24px;
-    min-height: 24px;
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    background: transparent;
-    border: none;
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-    transition: var(--transition-base);
     flex-shrink: 0;
-    font-size: 18px;
-    line-height: 1;
   }
 
-  .icon-button:hover {
-    color: var(--color-text-primary);
-    background-color: var(--color-neutral-800);
+  .sidebar-header {
+    padding: var(--spacing-4);
+    border-bottom: 1px solid var(--color-card-border);
+  }
+
+  .add-collection-button {
+    width: 100%;
+    padding: var(--spacing-2) var(--spacing-4);
+    background: var(--color-emerald-600);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .add-collection-button:hover {
+    background: var(--color-emerald-700);
+  }
+
+  .collections {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-4);
   }
 
   .collection-item {
@@ -626,377 +529,212 @@
   .collection-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-2);
-    padding: var(--spacing-1);
-    border-radius: var(--radius-sm);
-    transition: var(--transition-base);
-    cursor: grab;
+    position: relative;
   }
 
-  .collection-header:hover {
-    background-color: var(--color-neutral-800);
-  }
-
-  .collection-header:hover .collection-trigger,
-  .collection-header:hover .icon-button {
-    color: var(--color-text-primary);
-  }
-
-  .collection-trigger {
+  .collection-button {
+    flex: 1;
     display: flex;
     align-items: center;
     gap: var(--spacing-2);
-    flex: 1;
     padding: var(--spacing-2);
-    background: transparent;
+    background: none;
     border: none;
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-sm);
+    color: var(--color-text-primary);
     font-weight: 500;
-    text-align: left;
     cursor: pointer;
     transition: var(--transition-base);
-    min-width: 0;
+    border-radius: var(--radius-md);
   }
 
-  .collection-trigger:hover {
-    color: var(--color-text-primary);
-  }
-
-  .collection-name-input {
+  .collection-button:hover {
     background: var(--color-neutral-900);
-    border: 1px solid var(--color-card-border);
-    border-radius: var(--radius-sm);
-    color: var(--color-text-primary);
-    font-size: var(--font-size-sm);
-    padding: var(--spacing-1) var(--spacing-2);
-    width: 100%;
-    min-width: 0;
-  }
-
-  .collection-actions {
-    position: relative;
-    display: flex;
-    gap: var(--spacing-1);
-    flex-shrink: 0;
-  }
-
-  .more-button {
-    opacity: 0;
-    transition: opacity 0.2s ease;
-  }
-
-  .collection-header:hover .more-button {
-    opacity: 1;
-  }
-
-  .more-button[data-active="true"] {
-    opacity: 1;
   }
 
   .chevron {
     display: flex;
     align-items: center;
-    justify-content: center;
-    transition: transform 0.2s ease;
-    flex-shrink: 0;
-    width: 24px;
-    height: 24px;
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-    font-size: 12px;
-  }
-
-  .chevron:hover {
-    background-color: var(--color-neutral-700);
+    color: var(--color-text-secondary);
+    transition: transform var(--transition-base);
   }
 
   .chevron.open {
-    transform: rotate(0deg);
+    transform: rotate(90deg);
   }
 
-  .item-wrapper {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-1);
-    min-width: 0;
-    padding: var(--spacing-1) var(--spacing-3);
-    border-radius: var(--radius-md);
-    transition: background-color 0.2s ease;
-    cursor: grab;
-  }
-
-  .item-wrapper:hover {
-    background-color: var(--color-neutral-800);
-  }
-
-  .item-wrapper.dragging {
-    background-color: var(--color-neutral-800);
-    outline: 2px solid var(--color-emerald-600);
-    outline-offset: -2px;
-  }
-
-  .item-wrapper:hover .nav-link {
-    color: var(--color-text-primary);
-  }
-
-  .nav-link.active {
-    background-color: var(--color-neutral-800);
-    color: var(--color-text-primary);
-  }
-
-  .item-wrapper .nav-link.active {
-    background-color: transparent;
-  }
-
-  .item-actions {
-    position: relative;
-    display: flex;
-    gap: var(--spacing-1);
-    flex-shrink: 0;
+  .collection-name {
+    flex: 1;
+    text-align: left;
   }
 
   .collection-items {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    border-radius: var(--radius-md);
-    transition: background-color 0.2s ease;
-    min-height: 40px;
+    margin-left: var(--spacing-6);
+    margin-top: var(--spacing-2);
   }
 
-  .collection-items.dndzone {
-    min-height: 40px;
-  }
-
-  .collection-items.dndzone:hover {
-    background-color: var(--color-neutral-900);
-  }
-
-  .collection-items.dndzone.active {
-    background-color: var(--color-neutral-800);
-    outline: 2px dashed var(--color-card-border);
-    outline-offset: -2px;
-  }
-
-  .nav-link {
+  .item {
     display: flex;
     align-items: center;
-    gap: var(--spacing-2);
+    position: relative;
+    margin-bottom: var(--spacing-1);
+  }
+
+  .item-link {
+    flex: 1;
     padding: var(--spacing-2);
     color: var(--color-text-secondary);
     text-decoration: none;
     border-radius: var(--radius-md);
     transition: var(--transition-base);
+  }
+
+  .item-link:hover {
+    background: var(--color-neutral-900);
+    color: var(--color-text-primary);
+  }
+
+  .item-link.active {
+    background: var(--color-neutral-900);
+    color: var(--color-text-primary);
+  }
+
+  .item-name {
     font-size: var(--font-size-sm);
-    flex: 1;
-    min-width: 0;
   }
 
-  .nav-link:hover {
-    background-color: var(--color-neutral-800);
-    color: var(--color-text-primary);
+  .more-button {
+    padding: var(--spacing-1);
+    background: none;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: var(--transition-base);
+    border-radius: var(--radius-md);
   }
 
-  .nav-link.active {
-    background-color: var(--color-neutral-800);
+  .more-button:hover {
     color: var(--color-text-primary);
+    background: var(--color-neutral-900);
   }
 
   .dropdown-menu {
     position: absolute;
-    top: 100%;
     right: 0;
-    margin-top: var(--spacing-1);
-    background-color: var(--color-neutral-900);
+    top: 100%;
+    background: var(--color-card);
     border: 1px solid var(--color-card-border);
     border-radius: var(--radius-md);
     padding: var(--spacing-1);
-    min-width: 160px;
-    z-index: 100;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    z-index: 10;
+    min-width: 120px;
+    box-shadow: var(--shadow-md);
   }
 
-  .dropdown-item {
-    display: block;
+  .dropdown-menu button {
     width: 100%;
     padding: var(--spacing-2) var(--spacing-3);
-    border: none;
     background: none;
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-sm);
+    border: none;
+    color: var(--color-text-primary);
     text-align: left;
     cursor: pointer;
     border-radius: var(--radius-sm);
     transition: var(--transition-base);
   }
 
-  .dropdown-item:hover {
-    background-color: var(--color-neutral-800);
-    color: var(--color-text-primary);
-  }
-
-  .dropdown-item.delete {
-    color: rgb(239, 68, 68);
-  }
-
-  .dropdown-item.delete:hover {
-    background-color: rgb(127, 29, 29);
-    color: white;
-  }
-
-  .collection-item:active,
-  .item-wrapper:active {
-    cursor: grabbing;
-  }
-
-  .collection-header:active {
-    cursor: grabbing;
-  }
-
-  .item-wrapper:active {
-    cursor: grabbing;
-  }
-
-  .collection-name-link {
-    color: inherit;
-    text-decoration: none;
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .collection-name-link:hover {
-    color: var(--color-text-primary);
-  }
-
-  .item-name-input {
+  .dropdown-menu button:hover {
     background: var(--color-neutral-900);
-    border: 1px solid var(--color-card-border);
-    border-radius: var(--radius-sm);
-    color: var(--color-text-primary);
-    font-size: var(--font-size-sm);
+  }
+
+  input {
+    width: 100%;
     padding: var(--spacing-1) var(--spacing-2);
-    width: 100%;
-    min-width: 0;
-  }
-
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    border: none;
-    padding: var(--spacing-4);
-    max-width: 100vw;
-    max-height: 100vh;
-    width: 100%;
-  }
-
-  .modal-backdrop::backdrop {
-    background-color: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-  }
-
-  .modal-backdrop[open] {
-    display: flex;
-  }
-
-  .modal {
-    background-color: var(--color-card);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-6);
-    width: 100%;
-    max-width: 400px;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    margin: 0;
-  }
-
-  .modal-title {
-    font-size: var(--font-size-lg);
-    font-weight: 600;
-    color: var(--color-text-primary);
-    margin: 0 0 var(--spacing-4) 0;
-  }
-
-  .modal-input {
-    width: 100%;
-    padding: var(--spacing-3);
-    background-color: var(--color-neutral-900);
+    background: var(--color-card);
     border: 1px solid var(--color-card-border);
     border-radius: var(--radius-md);
     color: var(--color-text-primary);
-    font-size: var(--font-size-base);
-    margin-bottom: var(--spacing-4);
   }
 
-  .modal-input:focus {
+  input:focus {
     outline: none;
     border-color: var(--color-emerald-600);
+  }
+
+  .modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--color-card);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    padding: 0;
+    max-width: 400px;
+    width: 90%;
+  }
+
+  .modal::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+  }
+
+  .modal-content {
+    padding: var(--spacing-6);
+  }
+
+  .modal h2 {
+    margin: 0 0 var(--spacing-4) 0;
+    font-size: var(--font-size-xl);
+    font-weight: 600;
   }
 
   .modal-actions {
     display: flex;
     justify-content: flex-end;
-    gap: var(--spacing-2);
+    gap: var(--spacing-3);
+    margin-top: var(--spacing-6);
   }
 
-  .modal-button {
+  .modal-actions button {
     padding: var(--spacing-2) var(--spacing-4);
     border-radius: var(--radius-md);
-    font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;
     transition: var(--transition-base);
   }
 
-  .modal-button.secondary {
-    background-color: transparent;
+  .modal-actions button:first-child {
+    background: transparent;
     border: 1px solid var(--color-card-border);
-    color: var(--color-text-secondary);
-  }
-
-  .modal-button.secondary:hover {
-    background-color: var(--color-neutral-800);
     color: var(--color-text-primary);
   }
 
-  .modal-button.primary {
-    background-color: var(--color-emerald-600);
+  .modal-actions button:first-child:hover {
+    background: var(--color-neutral-900);
+  }
+
+  .modal-actions button:last-child {
+    background: var(--color-emerald-600);
     border: none;
     color: white;
   }
 
-  .modal-button.primary:hover {
-    background-color: var(--color-emerald-700);
+  .modal-actions button:last-child:hover {
+    background: var(--color-emerald-700);
   }
 
-  .modal-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .modal-wrapper {
-    position: fixed;
-    inset: 0;
-    z-index: 50;
-    display: none;
+  .chevron-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 0;
-    margin: 0;
-    border: none;
     background: none;
-    cursor: default;
-    width: 100%;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    transition: var(--transition-base);
   }
 
-  .modal-wrapper:has(dialog[open]) {
-    display: block;
+  .chevron-button:hover {
+    color: var(--color-text-primary);
   }
 </style> 

@@ -1,78 +1,72 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const dataPath = path.join(process.cwd(), 'src/lib/data/collections.json');
+// Get the absolute path to collections.json
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const COLLECTIONS_PATH = path.join(__dirname, '..', '..', '..', 'lib', 'data', 'collections.json');
 
-// Cache for collections data
-let collectionsCache: any = null;
-let lastReadTime = 0;
-const CACHE_TTL = 5000; // 5 seconds
+// Default empty collections structure
+const DEFAULT_COLLECTIONS = {};
 
-// Initialize collections file if it doesn't exist
-if (!fs.existsSync(dataPath)) {
-    fs.writeFileSync(dataPath, JSON.stringify({
-        "Primitives": {
-            "description": "All base (primitive) tokens go here.",
-            "extensions": {
-                "com.username.myapp": {
-                    "id": crypto.randomUUID()
-                }
+async function ensureDirectoryExists() {
+    const dir = path.dirname(COLLECTIONS_PATH);
+    try {
+        await fs.access(dir);
+    } catch {
+        await fs.mkdir(dir, { recursive: true });
+    }
+}
+
+async function readCollections() {
+    try {
+        await ensureDirectoryExists();
+        try {
+            const data = await fs.readFile(COLLECTIONS_PATH, 'utf-8');
+            return JSON.parse(data);
+        } catch (error: unknown) {
+            if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+                // File doesn't exist yet, return default structure
+                return DEFAULT_COLLECTIONS;
             }
+            throw error;
         }
-    }, null, 2));
-}
-
-function readCollections() {
-    const now = Date.now();
-    
-    // Return cached data if it's still valid
-    if (collectionsCache && (now - lastReadTime) < CACHE_TTL) {
-        return collectionsCache;
-    }
-
-    try {
-        const data = fs.readFileSync(dataPath, 'utf8');
-        collectionsCache = JSON.parse(data);
-        lastReadTime = now;
-        return collectionsCache;
     } catch (error) {
-        console.error('API: Error reading collections:', error);
-        return {};
+        console.error('Error reading collections:', error);
+        throw new Error('Failed to read collections');
     }
 }
 
-function writeCollections(collections: Record<string, any>) {
+async function writeCollections(collections: any) {
     try {
-        if (typeof collections !== 'object' || collections === null) {
-            console.error('API: Invalid collections data - not an object');
-            return false;
-        }
-
-        fs.writeFileSync(dataPath, JSON.stringify(collections, null, 2));
-        // Update cache
-        collectionsCache = collections;
-        lastReadTime = Date.now();
-        return true;
+        await ensureDirectoryExists();
+        await fs.writeFile(COLLECTIONS_PATH, JSON.stringify(collections, null, 2), 'utf-8');
+        console.log('Successfully wrote to:', COLLECTIONS_PATH);
     } catch (error) {
-        console.error('API: Error writing collections:', error);
-        return false;
+        console.error('Error writing collections:', error);
+        throw new Error('Failed to write collections');
     }
 }
 
-export const GET: RequestHandler = async () => {
-    const collections = readCollections();
-    return json(collections);
-};
+export const GET = (async () => {
+    try {
+        const collections = await readCollections();
+        return json(collections);
+    } catch (error) {
+        console.error('GET collections error:', error);
+        return new Response('Failed to fetch collections', { status: 500 });
+    }
+}) satisfies RequestHandler;
 
-export const PUT: RequestHandler = async ({ request }) => {
-    const collections = await request.json();
-    if (writeCollections(collections)) {
+export const PUT = (async ({ request }) => {
+    try {
+        const collections = await request.json();
+        await writeCollections(collections);
         return json({ success: true });
+    } catch (error) {
+        console.error('PUT collections error:', error);
+        return new Response('Failed to save collections', { status: 500 });
     }
-    return json({ success: false }, { status: 500 });
-}; 
+}) satisfies RequestHandler; 

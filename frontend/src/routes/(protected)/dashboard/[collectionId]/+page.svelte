@@ -1,5 +1,6 @@
-<!-- Main dashboard showing all tokens -->
+<!-- Reuse the dashboard layout but with collection-specific logic -->
 <script lang="ts">
+  import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { routes } from '$lib/config/routes';
   import Sidebar from '$lib/components/Sidebar.svelte';
@@ -10,8 +11,8 @@
   import { onMount } from 'svelte';
 
   let tokens: TokenItem[] = [];
-  let pageTitle = 'All Tokens';
-  let pageDescription = 'View all design tokens across collections';
+  let pageTitle = '';
+  let pageDescription = '';
   let isLoading = true;
 
   onMount(async () => {
@@ -24,10 +25,12 @@
   });
 
   $: {
-    // Show all tokens from all collections and categories
-    tokens = $collectionsStore.flatMap(c => 
-      c.items.flatMap(item => item.items || [])
-    );
+    const collection = $collectionsStore.find(c => c.id === $page.params.collectionId);
+    if (collection) {
+      pageTitle = collection.name;
+      pageDescription = collection.description || '';
+      tokens = collection.items.flatMap(item => item.items || []);
+    }
   }
 </script>
 
@@ -35,13 +38,13 @@
   <Sidebar />
   
   <div class="main-content">
-    <TopNav />
+    <TopNav title={pageTitle} />
     
     <main class="content">
       {#if isLoading}
         <div class="loading">Loading collections...</div>
       {:else}
-        <TokenTable {tokens} />
+        <TokenTable {tokens} title={pageTitle} description={pageDescription} />
       {/if}
     </main>
   </div>

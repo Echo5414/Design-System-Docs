@@ -1,52 +1,73 @@
+import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
-import { writable, derived } from 'svelte/store';
-import type { CollectionUIState } from '../types';
 
-const COLLECTIONS_UI_STATE_KEY = 'collections_ui_state';
+interface CollectionState {
+  isOpen: boolean;
+}
 
-// Load initial state from localStorage
-function loadUIState(): CollectionUIState[] {
-  if (!browser) return [];
-  try {
-    const stored = localStorage.getItem(COLLECTIONS_UI_STATE_KEY);
-    return stored ? JSON.parse(stored) : [];
-  } catch (error) {
-    console.error('Error loading UI state:', error);
-    return [];
+const STORAGE_KEY = 'collection_states';
+
+class CollectionStates {
+  private states: Map<string, CollectionState>;
+
+  constructor() {
+    this.states = new Map();
+    if (browser) {
+      // Load saved states from localStorage
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          Object.entries(parsed).forEach(([id, state]) => {
+            this.states.set(id, state as CollectionState);
+          });
+        }
+      } catch (error) {
+        console.error('Error loading collection states:', error);
+      }
+    }
+  }
+
+  getState(id: string): CollectionState {
+    if (!this.states.has(id)) {
+      this.states.set(id, { isOpen: false });
+    }
+    return this.states.get(id)!;
+  }
+
+  setState(id: string, state: CollectionState) {
+    this.states.set(id, state);
+    if (browser) {
+      // Save to localStorage
+      try {
+        const statesObj = Object.fromEntries(this.states);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(statesObj));
+      } catch (error) {
+        console.error('Error saving collection states:', error);
+      }
+    }
   }
 }
 
-// Create store
-const uiState = writable<CollectionUIState[]>(loadUIState());
+function createCollectionStatesStore() {
+  const { subscribe, set, update } = writable(new CollectionStates());
 
-// Create a derived store for collection states
-export const collectionStates = derived(uiState, $uiState => {
   return {
-    getState: (id: string): CollectionUIState => {
-      return $uiState.find(state => state.id === id) || { id, isOpen: false };
+    subscribe,
+    update,
+    getState: (id: string) => {
+      let states: CollectionStates;
+      subscribe(s => states = s)();
+      return states!.getState(id);
     }
   };
-});
-
-// Subscribe to changes and save to localStorage
-if (browser) {
-  uiState.subscribe((state) => {
-    try {
-      localStorage.setItem(COLLECTIONS_UI_STATE_KEY, JSON.stringify(state));
-    } catch (error) {
-      console.error('Error saving UI state:', error);
-    }
-  });
 }
 
+export const collectionStates = createCollectionStatesStore();
+
 export function setCollectionOpen(id: string, isOpen: boolean) {
-  uiState.update(states => {
-    const existingIndex = states.findIndex(state => state.id === id);
-    if (existingIndex >= 0) {
-      const newStates = [...states];
-      newStates[existingIndex] = { ...states[existingIndex], isOpen };
-      return newStates;
-    }
-    return [...states, { id, isOpen }];
+  collectionStates.update((states: CollectionStates) => {
+    states.setState(id, { isOpen });
+    return states;
   });
 } 

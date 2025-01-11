@@ -1,132 +1,41 @@
-import type { Collection, TokenItem, TokenData, TokenType, TokenValueType } from '$lib/types';
+import type { Collection } from '../types';
 
-interface RawToken {
-  id: string;
-  name: string;
-  type: TokenType;
-  value: TokenValueType;
+interface CollectionJson {
   description: string;
-  createdAt: string;
-  updatedAt: string;
-  source: string;
+  extensions: {
+    'com.username.myapp': {
+      id: string;
+    };
+  };
+  [key: string]: any;
 }
 
-class CollectionsAPI {
-  private static instance: CollectionsAPI;
-  private cache: Map<string, Collection[]> = new Map();
-  private cacheExpiry: Map<string, number> = new Map();
-  private cacheDuration = 5 * 60 * 1000; // 5 minutes
+const BASE_URL = '/api';
 
-  private constructor() {}
-
-  static getInstance(): CollectionsAPI {
-    if (!CollectionsAPI.instance) {
-      CollectionsAPI.instance = new CollectionsAPI();
+const collectionsAPI = {
+  async getCollections(fetchFn = fetch) {
+    const response = await fetchFn(`${BASE_URL}/collections`);
+    if (!response.ok) {
+      console.error('Failed to fetch collections:', await response.text());
+      throw new Error('Failed to fetch collections');
     }
-    return CollectionsAPI.instance;
-  }
+    return response.json();
+  },
 
-  private isCacheValid(key: string): boolean {
-    const expiry = this.cacheExpiry.get(key);
-    return expiry !== undefined && Date.now() < expiry;
-  }
-
-  private setCache(key: string, data: Collection[]): void {
-    this.cache.set(key, data);
-    this.cacheExpiry.set(key, Date.now() + this.cacheDuration);
-  }
-
-  async getCollections(): Promise<Collection[]> {
-    console.log('API: Fetching collections');
-
-    try {
-      const response = await fetch('/api/collections');
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const collections = await response.json();
-      console.log('API: Successfully fetched collections');
-
-      // If collections is already in the correct format, return it directly
-      if (Array.isArray(collections)) {
-        return collections;
-      }
-
-      // Otherwise, transform the data into our Collection format
-      return Object.entries(collections).map(([id, collection]) => ({
-        id,
-        name: id,
-        items: [],
-        ...(collection as Partial<Collection>)
-      }));
-    } catch (error) {
-      console.error('API: Error fetching collections:', error);
-      throw error;
+  async saveCollections(collections: any, fetchFn = fetch) {
+    const response = await fetchFn(`${BASE_URL}/collections`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(collections),
+    });
+    if (!response.ok) {
+      console.error('Failed to save collections:', await response.text());
+      throw new Error('Failed to save collections');
     }
-  }
+    return response.json();
+  },
+};
 
-  async saveCollections(collections: Collection[], customFetch?: typeof window.fetch): Promise<void> {
-    console.log('API: Saving collections');
-    const fetchFn = customFetch || window.fetch;
-
-    try {
-      const response = await fetchFn('/api/collections', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(collections),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      console.log('API: Successfully saved collections');
-    } catch (error) {
-      console.error('API: Error saving collections:', error);
-      throw error;
-    }
-  }
-
-  async createToken(tokenData: TokenData): Promise<TokenItem> {
-    try {
-      const response = await fetch('/api/tokens', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(tokenData),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const token: TokenItem = {
-        id: crypto.randomUUID(),
-        name: data.type,
-        type: data.type,
-        value: data.value,
-        description: data.description,
-        tokenData: {
-          type: data.type,
-          value: data.value,
-          description: data.description,
-          createdAt: data.createdAt,
-          updatedAt: data.updatedAt,
-          source: data.source
-        }
-      };
-
-      return token;
-    } catch (error) {
-      console.error('API: Error creating token:', error);
-      throw error;
-    }
-  }
-}
-
-export default CollectionsAPI.getInstance(); 
+export default collectionsAPI; 

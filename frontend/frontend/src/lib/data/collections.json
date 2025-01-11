@@ -49,7 +49,7 @@
       "description": "Primitive typography tokens.",
       "extensions": {
         "com.username.myapp": {
-          "id": "id-1736505289654-typo789"
+          "id": "id-1536505289654-xvrejqhx9"
         }
       },
       "H1": {
@@ -96,39 +96,11 @@
       }
     }
   },
-  "Specific Tokens": {
+  "asdfasdf": {
     "description": "",
     "extensions": {
       "com.username.myapp": {
-        "id": "id-1736603746182-8ex9tr1b4"
-      }
-    },
-    "Colors": {
-      "description": "",
-      "extensions": {
-        "com.username.myapp": {
-          "id": "id-1736603750640-8yascnj13"
-        }
-      },
-      "text-primary": {
-        "value": "#bc1515",
-        "type": "color",
-        "description": "aasdf",
-        "extensions": {
-          "com.username.myapp": {
-            "id": "id-1736606382812-xgk45vl1t"
-          }
-        }
-      },
-      "background-primary": {
-        "value": "#e89b17",
-        "type": "color",
-        "description": "ba",
-        "extensions": {
-          "com.username.myapp": {
-            "id": "id-1736607421623-pfla2396y"
-          }
-        }
+        "id": "id-1736601901478-8hvzkoobt"
       }
     }
   }

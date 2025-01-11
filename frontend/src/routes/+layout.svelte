@@ -14,9 +14,9 @@
     if (!isProtectedRoute) return;
 
     isLoading = true;
-    import('$lib/stores/collections').then(({ collections }) => {
-      collections.load()
-        .catch(error => {
+    import('$lib/stores/collections').then((module) => {
+      module.collectionsStore.load()
+        .catch((error: Error) => {
           console.error('Error loading collections:', error);
           // If we get a 401, we're not authenticated, redirect to login
           if (error.message.includes('401')) {

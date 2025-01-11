@@ -5,7 +5,7 @@ export default defineConfig({
 	plugins: [sveltekit()],
 	server: {
 		proxy: {
-			'/api': {
+			'/api/auth': {
 				target: 'http://localhost:1337',
 				changeOrigin: true,
 				secure: false,

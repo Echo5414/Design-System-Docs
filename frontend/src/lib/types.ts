@@ -1,61 +1,34 @@
-export interface Extension {
-  id: string;
-  [key: string]: any;
-}
+// frontend/src/lib/types.ts
 
-export interface Extensions {
-  'com.username.myapp': Extension;
-  [key: string]: Extension;
-}
+// Remove the type declarations since they're in app.d.ts
+// Instead, we'll use the global types directly
 
-export interface Collection {
+// Base interface for shared properties
+interface BaseItem {
   id: string;
   name: string;
   description?: string;
-  items: CollectionItem[];
-  extensions?: Extensions;
 }
 
-export interface CollectionItem {
-  id: string;
-  name: string;
-  description?: string;
-  items?: TokenItem[];
-  extensions?: Extensions;
-}
-
-export interface TokenItem {
-  id: string;
-  name: string;
+// Token interface with all properties
+export interface TokenItem extends BaseItem {
   type: TokenType;
   value: TokenValueType;
-  description?: string;
-  tokenData?: TokenData;
-  extensions?: Extensions;
-}
-
-export type TokenType = 'color' | 'typography' | 'spacing' | 'dimension';
-
-export interface TypographyValue {
-  'font-family': string;
-  'font-size': string;
-  'font-weight': number;
-  'line-height': string;
-  'letter-spacing': string;
-}
-
-export interface DimensionValue {
-  value: string | number;
-  unit: string;
-}
-
-export type TokenValueType = string | DimensionValue | TypographyValue;
-
-export interface TokenData {
-  type: TokenType;
-  description: string;
-  value: TokenValueType;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
   source?: string;
-} 
+  items?: TokenItem[];
+}
+
+// Collection item (category)
+export interface CollectionItem extends BaseItem {
+  items?: TokenItem[];
+}
+
+// Collection
+export interface Collection extends BaseItem {
+  items: CollectionItem[];
+}
+
+// Re-export Token as TokenItem for backward compatibility
+export type Token = TokenItem;

@@ -1,69 +1,29 @@
 <script lang="ts">
-  import TokenModal from '$lib/components/TokenModal.svelte';
   import { page } from '$app/stores';
-  import { onMount } from 'svelte';
-  import type { Collection, TokenData } from '$lib/types';
+  import TokenModal from '$lib/components/TokenModal.svelte';
+  import { collectionsStore } from '$lib/stores/collections';
+  import type { Collection, CollectionItem } from '$lib/types';
 
-  let isTokenModalOpen = $state(false);
-  let collections = $state<Collection[]>([]);
+  let isOpen = $state(false);
+  let selectedCollection = $state<Collection | undefined>(undefined);
+  let selectedCategory = $state<CollectionItem | undefined>(undefined);
 
-  function handleTokenSave(event: CustomEvent<TokenData>) {
-    const token = event.detail;
-    const id = crypto.randomUUID();
-    
-    // Here you would typically save to your backend
-    console.log('Token created:', token);
-    console.log('Updated collections:', collections);
-
-    isTokenModalOpen = false;
-  }
+  $effect(() => {
+    const { collectionId, categoryId } = $page.params;
+    selectedCollection = $collectionsStore.find(c => c.id === collectionId);
+    selectedCategory = selectedCollection?.items.find(item => item.id === categoryId);
+  });
 </script>
 
-<div class="container">
-  <div class="header">
-    <h1>Design Tokens</h1>
-    <button class="add-token-button" onclick={() => isTokenModalOpen = true}>
-      Add Token
-    </button>
-  </div>
-
-  <TokenModal 
-    isOpen={isTokenModalOpen}
-    on:close={() => isTokenModalOpen = false}
-    on:save={handleTokenSave}
+<div>
+  <TokenModal
+    bind:isOpen
+    collectionId={selectedCollection?.id || ''}
+    categoryId={selectedCategory?.id || ''}
+    on:save={() => {
+      isOpen = false;
+      // Refresh collections after save
+      collectionsStore.load();
+    }}
   />
-</div>
-
-<style>
-  .container {
-    padding: var(--spacing-6);
-  }
-
-  .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--spacing-6);
-  }
-
-  h1 {
-    margin: 0;
-    font-size: var(--font-size-2xl);
-    font-weight: 600;
-  }
-
-  .add-token-button {
-    padding: var(--spacing-2) var(--spacing-4);
-    background: var(--color-primary);
-    color: white;
-    border: none;
-    border-radius: var(--radius-md);
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 0.2s;
-  }
-
-  .add-token-button:hover {
-    background: var(--color-primary-dark);
-  }
-</style> 
+</div> 

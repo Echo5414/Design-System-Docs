@@ -1,19 +1,29 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { TokenData, TokenType, TokenValueType } from '$lib/types';
-  import collectionsAPI from '$lib/services/api';
+  import { collectionsStore } from '$lib/stores/collections';
+  import { createUniqueId } from '$lib/utils';
 
   export let isOpen = false;
+  export let collectionId: string;
+  export let categoryId: string;
 
   const dispatch = createEventDispatcher<{
     close: void;
-    save: TokenData;
+    save: void;
   }>();
 
   let tokenName = '';
   let tokenType: TokenType = 'color';
   let tokenValue = '';
   let tokenDescription = '';
+
+  // Additional fields for typography
+  let fontFamily = 'Arial, sans-serif';
+  let fontSize = '16px';
+  let fontWeight = 400;
+  let lineHeight = '1.5';
+  let letterSpacing = '0';
 
   function handleClose() {
     dispatch('close');
@@ -31,17 +41,11 @@
         };
       case 'typography':
         return {
-          'font-family': 'Arial, sans-serif',
-          'font-size': value || '16px',
-          'font-weight': 400,
-          'line-height': '1.5',
-          'letter-spacing': '0'
-        };
-      case 'spacing':
-        const [spacingNum, spacingUnit = 'px'] = value.split(/(\d+)/).filter(Boolean);
-        return {
-          value: parseFloat(spacingNum),
-          unit: spacingUnit
+          'font-family': fontFamily,
+          'font-size': fontSize,
+          'font-weight': fontWeight,
+          'line-height': lineHeight,
+          'letter-spacing': letterSpacing
         };
       default:
         return value;
@@ -51,19 +55,24 @@
   async function handleSubmit(event: SubmitEvent) {
     event.preventDefault();
 
-    const token: TokenData = {
+    const token = {
+      name: tokenName,
       type: tokenType,
       value: parseTokenValue(tokenType, tokenValue),
       description: tokenDescription || '',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      source: 'Design System'
+      extensions: {
+        'com.username.myapp': {
+          id: `id-${Date.now()}-${createUniqueId()}`
+        }
+      }
     };
 
-    dispatch('save', token);
+    await collectionsStore.addToken(collectionId, categoryId, token);
+    dispatch('save');
+    handleClose();
   }
 
-  const tokenTypes: TokenType[] = ['color', 'typography', 'spacing', 'dimension'];
+  const tokenTypes: TokenType[] = ['color', 'typography', 'dimension'];
 </script>
 
 {#if isOpen}
@@ -91,19 +100,69 @@
             {/each}
           </select>
         </div>
-        <div class="form-group">
-          <label for="tokenValue">Value</label>
-          <input
-            type="text"
-            id="tokenValue"
-            bind:value={tokenValue}
-            required
-            placeholder={tokenType === 'color' ? '#000000' : 
-              tokenType === 'dimension' ? '16px' :
-              tokenType === 'spacing' ? '8px' :
-              tokenType === 'typography' ? '16px' : ''}
-          />
-        </div>
+
+        {#if tokenType === 'typography'}
+          <div class="form-group">
+            <label for="fontFamily">Font Family</label>
+            <input
+              type="text"
+              id="fontFamily"
+              bind:value={fontFamily}
+              placeholder="Arial, sans-serif"
+            />
+          </div>
+          <div class="form-group">
+            <label for="fontSize">Font Size</label>
+            <input
+              type="text"
+              id="fontSize"
+              bind:value={fontSize}
+              placeholder="16px"
+            />
+          </div>
+          <div class="form-group">
+            <label for="fontWeight">Font Weight</label>
+            <input
+              type="number"
+              id="fontWeight"
+              bind:value={fontWeight}
+              min="100"
+              max="900"
+              step="100"
+            />
+          </div>
+          <div class="form-group">
+            <label for="lineHeight">Line Height</label>
+            <input
+              type="text"
+              id="lineHeight"
+              bind:value={lineHeight}
+              placeholder="1.5"
+            />
+          </div>
+          <div class="form-group">
+            <label for="letterSpacing">Letter Spacing</label>
+            <input
+              type="text"
+              id="letterSpacing"
+              bind:value={letterSpacing}
+              placeholder="0"
+            />
+          </div>
+        {:else}
+          <div class="form-group">
+            <label for="tokenValue">Value</label>
+            <input
+              type={tokenType === 'color' ? 'color' : 'text'}
+              id="tokenValue"
+              bind:value={tokenValue}
+              required
+              placeholder={tokenType === 'color' ? '#000000' : 
+                tokenType === 'dimension' ? '16px' : ''}
+            />
+          </div>
+        {/if}
+
         <div class="form-group">
           <label for="tokenDescription">Description</label>
           <textarea
@@ -130,20 +189,23 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: rgba(0, 0, 0, 0.75);
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 1000;
+    z-index: 9999;
   }
 
   .modal {
     background-color: var(--color-card);
     border-radius: var(--radius-lg);
     padding: var(--spacing-6);
-    width: 100%;
+    width: 90%;
     max-width: 500px;
     box-shadow: var(--shadow-lg);
+    position: relative;
+    max-height: 90vh;
+    overflow-y: auto;
   }
 
   .modal-header {
@@ -216,19 +278,21 @@
   .save-button {
     padding: var(--spacing-2) var(--spacing-4);
     border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;
-    transition: var(--transition-base);
+    transition: all var(--transition-base);
   }
 
   .cancel-button {
-    background-color: transparent;
+    background: none;
     border: 1px solid var(--color-card-border);
-    color: var(--color-text-primary);
+    color: var(--color-text-secondary);
   }
 
   .cancel-button:hover {
-    background-color: var(--color-neutral-900);
+    border-color: var(--color-text-secondary);
+    color: var(--color-text-primary);
   }
 
   .save-button {
