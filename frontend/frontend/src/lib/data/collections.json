@@ -1,0 +1,107 @@
+{
+  "Primitives": {
+    "description": "All base (primitive) tokens go here.",
+    "extensions": {
+      "com.username.myapp": {
+        "id": "id-1736505289654-xvrejqhx9"
+      }
+    },
+    "Colors": {
+      "description": "Primitive color tokens.",
+      "extensions": {
+        "com.username.myapp": {
+          "id": "id-1736505289654-xvrejqhx7"
+        }
+      },
+      "Emerald": {
+        "value": "#55dd72",
+        "type": "color",
+        "description": "Primary Color of App",
+        "extensions": {
+          "com.username.myapp": {
+            "id": "id-1736505293470-kpcd0rh1d"
+          }
+        }
+      }
+    },
+    "Dimensions": {
+      "description": "Primitive dimension tokens.",
+      "extensions": {
+        "com.username.myapp": {
+          "id": "id-1736505319050-0nfgtcyvi"
+        }
+      },
+      "4PX": {
+        "value": {
+          "value": "4",
+          "unit": "px"
+        },
+        "type": "dimension",
+        "description": "Dimension 4 px.",
+        "extensions": {
+          "com.username.myapp": {
+            "id": "90d43b60-39ff-4503-83f5-c6b27e359f23"
+          }
+        }
+      }
+    },
+    "Typography": {
+      "description": "Primitive typography tokens.",
+      "extensions": {
+        "com.username.myapp": {
+          "id": "id-1536505289654-xvrejqhx9"
+        }
+      },
+      "H1": {
+        "value": {
+          "font-family": "Arial, sans-serif",
+          "font-size": "32px",
+          "font-weight": 700,
+          "line-height": "40px",
+          "letter-spacing": "0.1px"
+        },
+        "type": "typography",
+        "description": "H1 of App",
+        "extensions": {
+          "com.username.myapp": {
+            "id": "id-7736505293470-kpcd0rh1d"
+          }
+        }
+      }
+    }
+  },
+  "Alias Tokens": {
+    "description": "All alias tokens go here.",
+    "extensions": {
+      "com.username.myapp": {
+        "id": "id-2736505289654-xvrejqhx9"
+      }
+    },
+    "Colors": {
+      "description": "Alias color tokens.",
+      "extensions": {
+        "com.username.myapp": {
+          "id": "id-3736505289654-xvrejqhx9"
+        }
+      },
+      "Primary500": {
+        "value": "#55dd72",
+        "type": "color",
+        "description": "Primary Color of App",
+        "extensions": {
+          "com.username.myapp": {
+            "id": "id-4736505293470-kpcd0rh1d"
+          }
+        }
+      }
+    }
+  },
+  "asdfasdf": {
+    "description": "",
+    "extensions": {
+      "com.username.myapp": {
+        "id": "id-1736601901478-8hvzkoobt"
+      }
+    }
+  }
+}

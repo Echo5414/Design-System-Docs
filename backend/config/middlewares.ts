@@ -7,6 +7,7 @@ export default [
     config: {
       headers: ['Content-Type', 'Authorization', 'Origin', 'Accept', 'GitHub-Token'],
       origin: ['http://localhost:5173'],
+      credentials: true,
     },
   },
   'strapi::poweredBy',
@@ -15,5 +16,6 @@ export default [
   'strapi::session',
   'strapi::favicon',
   'strapi::public',
+  'global::jwt-cookie',
   'global::github-callback',
 ];

@@ -28,5 +28,66 @@ export default {
 
     await pluginStore.set({ value: grantConfig });
     strapi.log.info('> Updated GitHub provider scope + enabled in the plugin store!');
+
+    // Grant createRepo permission to authenticated role
+    try {
+      const roleService = strapi.plugin('users-permissions').service('role');
+      const authenticatedRole = await strapi.db.query('plugin::users-permissions.role').findOne({
+        where: { type: 'authenticated' }
+      });
+
+      if (authenticatedRole) {
+        const permissionAction = 'api::github.github.createRepo';
+        const existingPermission = await strapi.db.query('plugin::users-permissions.permission').findOne({
+          where: {
+            action: permissionAction,
+            role: authenticatedRole.id
+          }
+        });
+
+        if (!existingPermission) {
+          await strapi.db.query('plugin::users-permissions.permission').create({
+            data: {
+              action: permissionAction,
+              role: authenticatedRole.id
+            }
+          });
+          strapi.log.info(`> Granted ${permissionAction} permission to Authenticated role`);
+        } else {
+          strapi.log.info(`> Permission ${permissionAction} already exists for Authenticated role`);
+        }
+      }
+    } catch (error) {
+      strapi.log.error('> Failed to update permissions:', error);
+    }
+
+    // DEBUG: List all roles to see what's available
+    try {
+      const roles = await strapi.db.query('plugin::users-permissions.role').findMany();
+      strapi.log.info('> Available roles:', roles.map(r => `${r.name} (${r.type})`).join(', '));
+
+      const authRole = roles.find(r => r.type === 'authenticated');
+      if (authRole) {
+        const permissionAction = 'api::github.github.createRepo';
+        const existingPermission = await strapi.db.query('plugin::users-permissions.permission').findOne({
+          where: {
+            action: permissionAction,
+            role: authRole.id
+          }
+        });
+
+        if (!existingPermission) {
+          await strapi.db.query('plugin::users-permissions.permission').create({
+            data: {
+              action: permissionAction,
+              role: authRole.id
+            }
+          });
+          strapi.log.info(`> RETRY: Granted ${permissionAction} permission to Authenticated role`);
+        }
+      }
+    } catch (e) {
+      strapi.log.error('> Error listing roles:', e);
+    }
   },
 };

@@ -4,6 +4,8 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\app.html
 	<head>
 		<meta charset="utf-8" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.png" />
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		%sveltekit.head%
 	</head>
@@ -12,310 +14,3259 @@ E:\Projekte\Coding\github\Design-System-Docs\frontend\src\app.html
 	</body>
 </html>
  
-E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+page.svelte 
-<!-- frontend/src/routes/+page.svelte -->
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\components\Sidebar.svelte 
 <script lang="ts">
-    import { onMount } from 'svelte';
-    import { goto } from '$app/navigation';
-  
-    interface User {
-        username: string;
-        // Add other user properties as needed
+  import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
+  import { dndzone, type DndEvent } from 'svelte-dnd-action';
+  import { browser } from '$app/environment';
+  import { onMount } from 'svelte';
+  import type { Collection, CollectionItem } from '../types';
+  import { collectionStates, setCollectionOpen } from '../stores/uiState';
+  import { collectionsStore } from '../stores/collections';
+
+  let activeDropdown: string | null = $state(null);
+  let dragActiveCollection: string | null = $state(null);
+  let isDraggingItem = $state(false);
+  let isCreateModalOpen = $state(false);
+  let newCollectionName = $state('');
+  let modalElement = $state<HTMLDialogElement | null>(null);
+  let editingCollectionId = $state<string | null>(null);
+  let editingItemId = $state<string | null>(null);
+  let isInitialized = $state(false);
+
+  onMount(() => {
+    isInitialized = true;
+  });
+
+  function createUniqueId() {
+    return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  async function handleCollectionDndConsider(event: CustomEvent<DndEvent<Collection>>) {
+    const updatedCollections = event.detail.items;
+    await collectionsStore.save(updatedCollections);
+  }
+
+  async function handleCollectionDndFinalize(event: CustomEvent<DndEvent<Collection>>) {
+    const { items: newCollections } = event.detail;
+    await collectionsStore.save(newCollections);
+  }
+
+  async function handleItemsDndConsider(event: CustomEvent<DndEvent<CollectionItem>>, collectionId: string) {
+    const { items: newItems } = event.detail;
+    const updatedCollections = $collectionsStore.map((collection: Collection) =>
+      collection.id === collectionId
+        ? { ...collection, items: newItems }
+        : collection
+    );
+    await collectionsStore.save(updatedCollections);
+  }
+
+  async function handleItemsDndFinalize(event: CustomEvent<DndEvent<CollectionItem>>, collectionId: string) {
+    const { items: newItems } = event.detail;
+    const updatedCollections = $collectionsStore.map((collection: Collection) =>
+      collection.id === collectionId
+        ? { ...collection, items: newItems }
+        : collection
+    );
+    await collectionsStore.save(updatedCollections);
+  }
+
+  function handleCollectionDragStart() {
+    if (isDraggingItem) return false;
+  }
+
+  function handleItemDragStart() {
+    isDraggingItem = true;
+  }
+
+  function handleItemDragEnd() {
+    isDraggingItem = false;
+  }
+
+  function openCreateModal() {
+    isCreateModalOpen = true;
+    newCollectionName = '';
+  }
+
+  function closeCreateModal() {
+    isCreateModalOpen = false;
+    newCollectionName = '';
+  }
+
+  async function createNewCollection() {
+    if (!newCollectionName.trim()) return;
+
+    const newCollection: Collection = {
+      id: createUniqueId(),
+      name: newCollectionName.trim(),
+      items: []
+    };
+
+    const updatedCollections = [...$collectionsStore, newCollection];
+    await collectionsStore.save(updatedCollections);
+    closeCreateModal();
+    // Navigate to the new collection
+    goto(`/dashboard/${newCollection.id}`);
+    setCollectionOpen(newCollection.id, true);
+  }
+
+  function handleCreateKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      createNewCollection();
     }
-  
-    let user: User | null = null;
-    let loading = true;
-    let isLoggingIn = false;
-    let repoName = '';
-    let isCreatingRepo = false;
-  
-    const handleGitHubLogin = () => {
-      isLoggingIn = true;
-      console.log('Starting GitHub login...');
-      
-      // Store the current URL as the return URL
-      const returnUrl = encodeURIComponent(window.location.origin);
-      const loginUrl = `http://localhost:1337/api/connect/github?returnTo=${returnUrl}`;
-      
-      console.log('Redirecting to:', loginUrl);
-      window.location.href = loginUrl;
-    };
-  
-    const handleLogout = () => {
-      localStorage.removeItem('jwt');
-      localStorage.removeItem('github_token');
-      localStorage.removeItem('user');
-      user = null;
-    };
-  
-    const handleCreateRepo = async () => {
-      if (!repoName) return;
-      
-      isCreatingRepo = true;
-      try {
-        const jwt = localStorage.getItem('jwt');
-        const githubToken = localStorage.getItem('github_token');
-        
-        console.log('Tokens:', { 
-          jwt: jwt ? 'present' : 'missing', 
-          githubToken: githubToken ? 'present' : 'missing' 
-        });
-        
-        if (!jwt || !githubToken) {
-          throw new Error('Missing authentication tokens');
-        }
+  }
 
-        const response = await fetch('http://localhost:1337/api/github/create-repo', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${jwt}`,
-            'GitHub-Token': githubToken,
-          },
-          body: JSON.stringify({
-            name: repoName,
-            description: 'Created via Design System Docs',
-            private: false,
-            auto_init: true
-          })
-        });
+  function handleModalClick(event: MouseEvent) {
+    // Only close if clicking the backdrop (dialog element itself)
+    if (event.target === modalElement) {
+      closeCreateModal();
+    }
+  }
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error?.message || response.statusText);
-        }
+  function handleModalKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault(); // Prevent default dialog close
+      closeCreateModal();
+    }
+  }
 
-        const { data } = await response.json();
-        console.log('Repository created:', data);
-        repoName = '';
-        alert(`Repository created successfully! URL: ${data.html_url}`);
-      } catch (error) {
-        console.error('Error creating repository:', error);
-        alert(error instanceof Error ? error.message : 'Failed to create repository');
-      } finally {
-        isCreatingRepo = false;
-      }
-    };
-  
-    onMount(() => {
-      console.log('=== onMount ===');
-      console.log('Full URL:', window.location.href);
-      console.log('Search params:', window.location.search);
-      
-      // Check for tokens in URL (after GitHub redirect)
-      const params = new URLSearchParams(window.location.search);
-      const access_token = params.get('access_token');
-      const jwt = params.get('jwt');
-      const error = params.get('error');
-      
-      console.log('URL Parameters:', { 
-        access_token: access_token ? 'present' : 'missing',
-        jwt: jwt ? 'present' : 'missing',
-        error
-      });
-      
-      if (error) {
-        console.error('Authentication error:', error);
-        alert('Failed to authenticate with GitHub');
-        window.history.replaceState({}, document.title, window.location.pathname);
-        return;
-      }
-      
-      if (access_token && jwt) {
-        console.log('Storing tokens in localStorage');
-        localStorage.setItem('github_token', access_token);
-        localStorage.setItem('jwt', jwt);
-        
-        // Fetch user data first
-        fetch('http://localhost:1337/api/users/me', {
-          headers: {
-            Authorization: `Bearer ${jwt}`,
-          },
-        })
-        .then(res => res.json())
-        .then(userData => {
-          console.log('User data received:', userData);
-          user = userData;
-          localStorage.setItem('user', JSON.stringify(userData));
-          // Use goto instead of window.history
-          goto('/', { replaceState: true });
-        })
-        .catch(error => {
-          console.error('Error fetching user data:', error);
-          goto('/', { replaceState: true });
-        });
-      } else {
-        console.log('No tokens found in URL');
-      }
+  function toggleDropdown(id: string, event: Event) {
+    event.stopPropagation();
+    activeDropdown = activeDropdown === id ? null : id;
+  }
 
-      // Check for existing session
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        try {
-          user = JSON.parse(storedUser);
-          console.log('Restored user from localStorage:', user);
-        } catch (e) {
-          console.error('Error parsing stored user:', e);
-          localStorage.removeItem('user');
-        }
+  function handleClickOutside(event: MouseEvent) {
+    if (activeDropdown) {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.dropdown-menu') && !target.closest('.more-button')) {
+        activeDropdown = null;
       }
-      loading = false;
-    });
-  </script>
-  
-  <main class="container">
-    <h1>Welcome to SvelteKit</h1>
+    }
+  }
+
+  $effect(() => {
+    if (activeDropdown) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  });
+
+  function toggleCollection(id: string) {
+    const currentState = $collectionStates.getState(id);
+    setCollectionOpen(id, !currentState.isOpen);
+  }
+
+  function startEditingCollection(id: string) {
+    editingCollectionId = id;
+    activeDropdown = null;
+  }
+
+  function startEditingItem(collectionId: string, itemId: string) {
+    editingItemId = itemId;
+    activeDropdown = null;
+  }
+
+  function handleCollectionKeydown(event: KeyboardEvent, id: string) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggleCollection(id);
+    }
+  }
+
+  function handleChevronClick(event: MouseEvent, id: string) {
+    event.stopPropagation();
+    toggleCollection(id);
+  }
+
+  function focusOnMount(node: HTMLElement) {
+    node.focus();
+    return {};
+  }
+
+  function handleItemKeydown(event: KeyboardEvent, collectionId: string, itemId: string) {
+    if (event.key === 'Enter') {
+      saveItemName(collectionId, itemId, event);
+    } else if (event.key === 'Escape') {
+      editingItemId = null;
+    }
+  }
+
+  function handleKeydown(event: KeyboardEvent, id: string) {
+    if (event.key === 'Enter') {
+      saveCollectionName(id, event);
+    } else if (event.key === 'Escape') {
+      editingCollectionId = null;
+    }
+  }
+
+  async function saveCollectionName(id: string, event: Event) {
+    const input = event.target as HTMLInputElement;
+    const newName = input.value.trim();
     
-    {#if loading}
-      <p>Loading...</p>
-    {:else if user}
-      <div class="user-info">
-        <p>Welcome, {user.username}!</p>
-        
-        <!-- Add repository creation form -->
-        <div class="create-repo-form">
+    if (newName) {
+      const updatedCollections = $collectionsStore.map((collection: Collection) =>
+        collection.id === id
+          ? { ...collection, name: newName }
+          : collection
+      );
+      await collectionsStore.save(updatedCollections);
+    }
+    editingCollectionId = null;
+  }
+
+  async function saveItemName(collectionId: string, itemId: string, event: Event) {
+    const input = event.target as HTMLInputElement;
+    const newName = input.value.trim();
+    
+    if (newName) {
+      const updatedCollections = $collectionsStore.map((collection: Collection) =>
+        collection.id === collectionId
+          ? {
+              ...collection,
+              items: collection.items.map((item: CollectionItem) =>
+                item.id === itemId
+                  ? { ...item, name: newName }
+                  : item
+              )
+            }
+          : collection
+      );
+      await collectionsStore.save(updatedCollections);
+    }
+    editingItemId = null;
+  }
+
+  async function addNewItem(collectionId: string) {
+    const collection = $collectionsStore.find((c: Collection) => c.id === collectionId);
+    if (!collection) return;
+
+    const newItem: CollectionItem = {
+      id: createUniqueId(),
+      name: 'New Item',
+      items: []
+    };
+
+    const updatedCollections = $collectionsStore.map((c: Collection) =>
+      c.id === collectionId
+        ? { 
+            ...c, 
+            items: [...c.items, newItem]
+          }
+        : c
+    );
+    await collectionsStore.save(updatedCollections);
+    // Navigate to the new item
+    goto(`/dashboard/${collectionId}/${newItem.id}`);
+    setCollectionOpen(collectionId, true);
+    activeDropdown = null;
+  }
+
+  async function deleteCollection(id: string) {
+    const updatedCollections = $collectionsStore.filter((collection: Collection) => collection.id !== id);
+    await collectionsStore.save(updatedCollections);
+    // If we're on the current collection's page, navigate to dashboard
+    if ($page.url.pathname.includes(id)) {
+      goto('/dashboard');
+    }
+  }
+
+  async function deleteItem(collectionId: string, itemId: string) {
+    const updatedCollections = $collectionsStore.map((collection: Collection) =>
+      collection.id === collectionId
+        ? {
+            ...collection,
+            items: collection.items.filter((item: CollectionItem) => item.id !== itemId)
+          }
+        : collection
+    );
+    await collectionsStore.save(updatedCollections);
+    // If we're on the current item's page, navigate to collection
+    if ($page.url.pathname.includes(itemId)) {
+      goto(`/dashboard/${collectionId}`);
+    }
+  }
+</script>
+
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <button class="add-collection-button" onclick={openCreateModal}>
+      Add Collection
+    </button>
+  </div>
+
+  <div class="collections">
+    <section
+      use:dndzone={{
+        items: $collectionsStore,
+        dragDisabled: isDraggingItem,
+        flipDurationMs: 150
+      }}
+      onconsider={handleCollectionDndConsider}
+      onfinalize={handleCollectionDndFinalize}
+    >
+      {#each $collectionsStore as collection (collection.id)}
+        <div class="collection-item" data-collection-id={collection.id}>
+          <div class="collection-header">
+            <div
+              class="collection-button"
+              role="button"
+              tabindex="0"
+              onclick={() => toggleCollection(collection.id)}
+              onkeydown={(e) => handleCollectionKeydown(e, collection.id)}
+            >
+              <span class="chevron" class:open={$collectionStates.getState(collection.id).isOpen}>
+                <button
+                  class="chevron-button"
+                  onclick={(e) => handleChevronClick(e, collection.id)}
+                  onkeydown={(e) => handleCollectionKeydown(e, collection.id)}
+                  aria-label={$collectionStates.getState(collection.id).isOpen ? "Collapse section" : "Expand section"}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    role="img"
+                    aria-hidden="true"
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </button>
+              </span>
+              {#if editingCollectionId === collection.id}
+                <input
+                  type="text"
+                  value={collection.name}
+                  onblur={(e) => saveCollectionName(collection.id, e)}
+                  onkeydown={(e) => handleKeydown(e, collection.id)}
+                  use:focusOnMount
+                />
+              {:else}
+                <span class="collection-name">{collection.name}</span>
+              {/if}
+            </div>
+            <button
+              class="more-button"
+              onclick={(e) => toggleDropdown(collection.id, e)}
+              aria-label="More options"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                role="img"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="1" />
+                <circle cx="12" cy="5" r="1" />
+                <circle cx="12" cy="19" r="1" />
+              </svg>
+            </button>
+            {#if activeDropdown === collection.id}
+              <div class="dropdown-menu">
+                <button onclick={() => startEditingCollection(collection.id)}>
+                  Rename
+                </button>
+                <button onclick={() => addNewItem(collection.id)}>
+                  Add Item
+                </button>
+                <button onclick={() => deleteCollection(collection.id)}>
+                  Delete
+                </button>
+              </div>
+            {/if}
+          </div>
+
+          {#if $collectionStates.getState(collection.id).isOpen}
+            <div class="collection-items">
+              <section
+                use:dndzone={{
+                  items: collection.items,
+                  dragDisabled: false,
+                  flipDurationMs: 150
+                }}
+                onconsider={(e) => handleItemsDndConsider(e, collection.id)}
+                onfinalize={(e) => handleItemsDndFinalize(e, collection.id)}
+              >
+                {#each collection.items as item (item.id)}
+                  <div class="item">
+                    <a
+                      href={`/dashboard/${collection.id}/${item.id}`}
+                      class="item-link"
+                      class:active={$page.url.pathname.includes(item.id)}
+                    >
+                      {#if editingItemId === item.id}
+                        <input
+                          type="text"
+                          value={item.name}
+                          onblur={(e) => saveItemName(collection.id, item.id, e)}
+                          onkeydown={(e) => handleItemKeydown(e, collection.id, item.id)}
+                          use:focusOnMount
+                        />
+                      {:else}
+                        <span class="item-name">{item.name}</span>
+                      {/if}
+                    </a>
+                    <button
+                      class="more-button"
+                      onclick={(e) => toggleDropdown(item.id, e)}
+                      aria-label="More options"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        role="img"
+                        aria-hidden="true"
+                      >
+                        <circle cx="12" cy="12" r="1" />
+                        <circle cx="12" cy="5" r="1" />
+                        <circle cx="12" cy="19" r="1" />
+                      </svg>
+                    </button>
+                    {#if activeDropdown === item.id}
+                      <div class="dropdown-menu">
+                        <button onclick={() => startEditingItem(collection.id, item.id)}>
+                          Rename
+                        </button>
+                        <button onclick={() => deleteItem(collection.id, item.id)}>
+                          Delete
+                        </button>
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              </section>
+            </div>
+          {/if}
+        </div>
+      {/each}
+    </section>
+  </div>
+</aside>
+
+{#if isCreateModalOpen}
+  <dialog
+    class="modal"
+    bind:this={modalElement}
+    open
+    aria-labelledby="modal-title"
+    aria-modal="true"
+  >
+    <div 
+      class="modal-content"
+      onclick={handleModalClick}
+      onkeydown={handleModalKeydown}
+      role="presentation"
+    >
+      <h2 id="modal-title">Create Collection</h2>
+      <input
+        type="text"
+        bind:value={newCollectionName}
+        placeholder="Collection name"
+        onkeydown={handleCreateKeydown}
+      />
+      <div class="modal-actions">
+        <button onclick={closeCreateModal}>Cancel</button>
+        <button onclick={createNewCollection}>Create</button>
+      </div>
+    </div>
+  </dialog>
+{/if}
+
+<style>
+  .sidebar {
+    width: 260px;
+    background: var(--color-card);
+    border-right: 1px solid var(--color-card-border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  .sidebar-header {
+    padding: var(--spacing-4);
+    border-bottom: 1px solid var(--color-card-border);
+  }
+
+  .add-collection-button {
+    width: 100%;
+    padding: var(--spacing-2) var(--spacing-4);
+    background: var(--color-emerald-600);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .add-collection-button:hover {
+    background: var(--color-emerald-700);
+  }
+
+  .collections {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-4);
+  }
+
+  .collection-item {
+    margin-bottom: var(--spacing-2);
+  }
+
+  .collection-header {
+    display: flex;
+    align-items: center;
+    position: relative;
+  }
+
+  .collection-button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    padding: var(--spacing-2);
+    background: none;
+    border: none;
+    color: var(--color-text-primary);
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-base);
+    border-radius: var(--radius-md);
+  }
+
+  .collection-button:hover {
+    background: var(--color-neutral-900);
+  }
+
+  .chevron {
+    display: flex;
+    align-items: center;
+    color: var(--color-text-secondary);
+    transition: transform var(--transition-base);
+  }
+
+  .chevron.open {
+    transform: rotate(90deg);
+  }
+
+  .collection-name {
+    flex: 1;
+    text-align: left;
+  }
+
+  .collection-items {
+    margin-left: var(--spacing-6);
+    margin-top: var(--spacing-2);
+  }
+
+  .item {
+    display: flex;
+    align-items: center;
+    position: relative;
+    margin-bottom: var(--spacing-1);
+  }
+
+  .item-link {
+    flex: 1;
+    padding: var(--spacing-2);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    border-radius: var(--radius-md);
+    transition: var(--transition-base);
+  }
+
+  .item-link:hover {
+    background: var(--color-neutral-900);
+    color: var(--color-text-primary);
+  }
+
+  .item-link.active {
+    background: var(--color-neutral-900);
+    color: var(--color-text-primary);
+  }
+
+  .item-name {
+    font-size: var(--font-size-sm);
+  }
+
+  .more-button {
+    padding: var(--spacing-1);
+    background: none;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: var(--transition-base);
+    border-radius: var(--radius-md);
+  }
+
+  .more-button:hover {
+    color: var(--color-text-primary);
+    background: var(--color-neutral-900);
+  }
+
+  .dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    background: var(--color-card);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-1);
+    z-index: 10;
+    min-width: 120px;
+    box-shadow: var(--shadow-md);
+  }
+
+  .dropdown-menu button {
+    width: 100%;
+    padding: var(--spacing-2) var(--spacing-3);
+    background: none;
+    border: none;
+    color: var(--color-text-primary);
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: var(--transition-base);
+  }
+
+  .dropdown-menu button:hover {
+    background: var(--color-neutral-900);
+  }
+
+  input {
+    width: 100%;
+    padding: var(--spacing-1) var(--spacing-2);
+    background: var(--color-card);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
+  }
+
+  input:focus {
+    outline: none;
+    border-color: var(--color-emerald-600);
+  }
+
+  .modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--color-card);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    padding: 0;
+    max-width: 400px;
+    width: 90%;
+  }
+
+  .modal::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+  }
+
+  .modal-content {
+    padding: var(--spacing-6);
+  }
+
+  .modal h2 {
+    margin: 0 0 var(--spacing-4) 0;
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-3);
+    margin-top: var(--spacing-6);
+  }
+
+  .modal-actions button {
+    padding: var(--spacing-2) var(--spacing-4);
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .modal-actions button:first-child {
+    background: transparent;
+    border: 1px solid var(--color-card-border);
+    color: var(--color-text-primary);
+  }
+
+  .modal-actions button:first-child:hover {
+    background: var(--color-neutral-900);
+  }
+
+  .modal-actions button:last-child {
+    background: var(--color-emerald-600);
+    border: none;
+    color: white;
+  }
+
+  .modal-actions button:last-child:hover {
+    background: var(--color-emerald-700);
+  }
+
+  .chevron-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .chevron-button:hover {
+    color: var(--color-text-primary);
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\components\TokenModal.svelte 
+<script lang="ts">
+  import { createEventDispatcher } from 'svelte';
+  import type { TokenData, TokenType, TokenValueType } from '$lib/types';
+  import { collectionsStore } from '$lib/stores/collections';
+
+  export let isOpen = false;
+  export let collectionId: string;
+  export let categoryId: string;
+
+  const dispatch = createEventDispatcher<{
+    close: void;
+    save: void;
+  }>();
+
+  let tokenName = '';
+  let tokenType: TokenType = 'color';
+  let tokenValue = '';
+  let tokenDescription = '';
+
+  function handleClose() {
+    dispatch('close');
+  }
+
+  function parseTokenValue(type: TokenType, value: string): TokenValueType {
+    switch (type) {
+      case 'color':
+        return value;
+      case 'dimension':
+        const [numStr, unit = 'px'] = value.split(/(\d+)/).filter(Boolean);
+        return {
+          value: parseFloat(numStr),
+          unit
+        };
+      case 'typography':
+        return {
+          'font-family': 'Arial, sans-serif',
+          'font-size': value || '16px',
+          'font-weight': 400,
+          'line-height': '1.5',
+          'letter-spacing': '0'
+        };
+      case 'spacing':
+        const [spacingNum, spacingUnit = 'px'] = value.split(/(\d+)/).filter(Boolean);
+        return {
+          value: parseFloat(spacingNum),
+          unit: spacingUnit
+        };
+      default:
+        return value;
+    }
+  }
+
+  async function handleSubmit(event: SubmitEvent) {
+    event.preventDefault();
+
+    const token: TokenData & { name: string } = {
+      name: tokenName,
+      type: tokenType,
+      value: parseTokenValue(tokenType, tokenValue),
+      description: tokenDescription || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      source: 'Design System'
+    };
+
+    await collectionsStore.addToken(collectionId, categoryId, token);
+    dispatch('save');
+    handleClose();
+  }
+
+  const tokenTypes: TokenType[] = ['color', 'typography', 'spacing', 'dimension'];
+</script>
+
+{#if isOpen}
+  <div class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Add Token</h2>
+        <button class="close-button" on:click={handleClose}>×</button>
+      </div>
+      <form on:submit={handleSubmit}>
+        <div class="form-group">
+          <label for="tokenName">Name</label>
           <input
             type="text"
-            bind:value={repoName}
-            placeholder="Enter repository name"
-            disabled={isCreatingRepo}
+            id="tokenName"
+            bind:value={tokenName}
+            required
           />
-          <button
-            class="create-repo-button"
-            on:click={handleCreateRepo}
-            disabled={!repoName || isCreatingRepo}
+        </div>
+        <div class="form-group">
+          <label for="tokenType">Type</label>
+          <select id="tokenType" bind:value={tokenType}>
+            {#each tokenTypes as type}
+              <option value={type}>{type}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="tokenValue">Value</label>
+          <input
+            type="text"
+            id="tokenValue"
+            bind:value={tokenValue}
+            required
+            placeholder={tokenType === 'color' ? '#000000' : 
+              tokenType === 'dimension' ? '16px' :
+              tokenType === 'spacing' ? '8px' :
+              tokenType === 'typography' ? '16px' : ''}
+          />
+        </div>
+        <div class="form-group">
+          <label for="tokenDescription">Description</label>
+          <textarea
+            id="tokenDescription"
+            bind:value={tokenDescription}
+            rows="3"
+          ></textarea>
+        </div>
+        <div class="button-group">
+          <button type="button" class="cancel-button" on:click={handleClose}>
+            Cancel
+          </button>
+          <button type="submit" class="save-button">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.75);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+  }
+
+  .modal {
+    background-color: var(--color-card);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-6);
+    width: 90%;
+    max-width: 500px;
+    box-shadow: var(--shadow-lg);
+    position: relative;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-6);
+  }
+
+  h2 {
+    margin: 0;
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .close-button {
+    background: none;
+    border: none;
+    font-size: var(--font-size-2xl);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .close-button:hover {
+    color: var(--color-text-primary);
+  }
+
+  .form-group {
+    margin-bottom: var(--spacing-4);
+  }
+
+  label {
+    display: block;
+    margin-bottom: var(--spacing-2);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+  }
+
+  input,
+  select,
+  textarea {
+    width: 100%;
+    padding: var(--spacing-2) var(--spacing-3);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-card);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-base);
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--color-emerald-600);
+    box-shadow: 0 0 0 1px var(--color-emerald-600);
+  }
+
+  .button-group {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-3);
+    margin-top: var(--spacing-6);
+  }
+
+  .cancel-button,
+  .save-button {
+    padding: var(--spacing-2) var(--spacing-4);
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .cancel-button {
+    background-color: transparent;
+    border: 1px solid var(--color-card-border);
+    color: var(--color-text-primary);
+  }
+
+  .cancel-button:hover {
+    background-color: var(--color-neutral-900);
+  }
+
+  .save-button {
+    background-color: var(--color-emerald-600);
+    border: none;
+    color: white;
+  }
+
+  .save-button:hover {
+    background-color: var(--color-emerald-700);
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\components\TokenTable.svelte 
+<script lang="ts">
+  import type { TokenItem as Token } from '$lib/types';
+
+  export let tokens: Token[] = [];
+  export let title: string = '';
+  export let description: string = '';
+
+  function isColorValue(value: any): value is string {
+    return typeof value === 'string' && value.startsWith('#');
+  }
+
+  function isDimensionValue(value: any): value is { value: string | number; unit: string } {
+    return typeof value === 'object' && 'value' in value && 'unit' in value && !('font-family' in value);
+  }
+
+  function isTypographyValue(value: any): value is {
+    'font-family': string;
+    'font-size': string;
+    'font-weight': number;
+    'line-height': string;
+    'letter-spacing': string;
+  } {
+    return typeof value === 'object' && 'font-family' in value;
+  }
+</script>
+
+<div class="token-view">
+  <header class="header">
+    <h2>{title}</h2>
+    <p class="description">{description}</p>
+  </header>
+
+  <div class="token-table">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Preview</th>
+          <th>Value</th>
+          <th>Description</th>
+          <th>Created At</th>
+          <th>Last Updated</th>
+          <th>Source</th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each tokens as token}
+          <tr>
+            <td>{token.name}</td>
+            <td>
+              {#if token.type === 'color' && isColorValue(token.value)}
+                <div 
+                  class="color-preview" 
+                  style="background-color: {token.value}"
+                ></div>
+              {:else if token.type === 'typography' && isTypographyValue(token.value)}
+                <div class="typography-preview">
+                  Aa
+                </div>
+              {:else if token.type === 'dimension' && isDimensionValue(token.value)}
+                <div class="dimension-preview">
+                  {token.value.value}{token.value.unit || ''}
+                </div>
+              {:else}
+                {token.type}
+              {/if}
+            </td>
+            <td>
+              {#if typeof token.value === 'object'}
+                <pre>{JSON.stringify(token.value, null, 2)}</pre>
+              {:else}
+                {token.value}
+              {/if}
+            </td>
+            <td>{token.description}</td>
+            <td>{token.tokenData?.createdAt || '-'}</td>
+            <td>{token.tokenData?.updatedAt || '-'}</td>
+            <td>{token.tokenData?.source || '-'}</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .token-view {
+    width: 100%;
+  }
+
+  .header {
+    margin-bottom: var(--spacing-8);
+  }
+
+  h2 {
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+
+  .description {
+    color: var(--color-text-secondary);
+    margin: var(--spacing-2) 0 0 0;
+  }
+
+  .token-table {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: var(--color-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-card-border);
+  }
+
+  th, td {
+    padding: var(--spacing-4);
+    text-align: left;
+    border-bottom: 1px solid var(--color-card-border);
+  }
+
+  th {
+    font-weight: 500;
+    color: var(--color-text-muted);
+    background-color: var(--color-neutral-900);
+  }
+
+  td {
+    color: var(--color-text-primary);
+  }
+
+  .color-preview {
+    width: 40px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-card-border);
+  }
+
+  .typography-preview {
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-xl);
+    color: var(--color-text-primary);
+  }
+
+  .dimension-preview {
+    font-family: var(--font-family-mono);
+    color: var(--color-text-primary);
+  }
+
+  pre {
+    margin: 0;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-sm);
+    white-space: pre-wrap;
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+error.svelte 
+<script lang="ts">
+  import { page } from '$app/stores';
+</script>
+
+{#if $page.error}
+  <div class="container">
+    <div class="error-card">
+      <h1>Error {$page.status}</h1>
+      <p>{$page.error.message}</p>
+      <button class="back-button" on:click={() => history.back()}>Go Back</button>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .container {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-4);
+  }
+
+  .error-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-6);
+    text-align: center;
+    max-width: 400px;
+    width: 100%;
+  }
+
+  h1 {
+    color: var(--color-text-primary);
+    font-size: var(--font-size-2xl);
+    margin: 0 0 var(--spacing-4) 0;
+  }
+
+  p {
+    color: var(--color-text-secondary);
+    margin: 0 0 var(--spacing-6) 0;
+  }
+
+  .back-button {
+    background: var(--color-emerald-600);
+    color: white;
+    border: none;
+    padding: var(--spacing-2) var(--spacing-4);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .back-button:hover {
+    background: var(--color-emerald-700);
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+layout.svelte 
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { page } from '$app/stores';
+  import '$lib/styles/global.css';
+  import '$lib/styles/tokens.css';
+
+  let { children } = $props();
+  let isLoading = $state(false);
+
+  // Only load collections for protected routes
+  $effect(() => {
+    // Check if we're on a protected route by looking for (protected) in the pathname
+    const isProtectedRoute = $page.url.pathname.includes('(protected)');
+    if (!isProtectedRoute) return;
+
+    isLoading = true;
+    import('$lib/stores/collections').then((module) => {
+      module.collectionsStore.load()
+        .catch((error: Error) => {
+          console.error('Error loading collections:', error);
+          // If we get a 401, we're not authenticated, redirect to login
+          if (error.message.includes('401')) {
+            window.location.href = '/';
+          }
+        })
+        .finally(() => {
+          isLoading = false;
+        });
+    });
+  });
+</script>
+
+{#if isLoading}
+  <div class="loading">
+    <p>Loading...</p>
+  </div>
+{:else}
+  {@render children()}
+{/if}
+
+<style>
+  .loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-lg);
+  }
+</style> 
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+page.svelte 
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
+  import { routes, DEFAULT_AUTH_REDIRECT } from '$lib/config/routes';
+
+  let isLoggingIn = $state(false);
+  let loading = $state(false);
+  let error = $state<string | null>($page.data.error || null);
+
+  function handleGitHubLogin() {
+    isLoggingIn = true;
+    console.log('Starting GitHub login...');
+    
+    // Clear any existing auth state
+    localStorage.removeItem('user');
+    
+    const returnUrl = encodeURIComponent(`${window.location.origin}${routes.LOGIN}`);
+    const loginUrl = `http://localhost:1337/api/connect/github?returnTo=${returnUrl}`;
+    
+    console.log('Redirecting to:', loginUrl);
+    window.location.href = loginUrl;
+  }
+
+  onMount(async () => {
+    console.log('=== onMount ===');
+    loading = true;
+    
+    try {
+      // Check authentication state
+      console.log('Auth state:', {
+        isAuthenticated: $page.data.isAuthenticated,
+        hasError: !!$page.data.error
+      });
+      
+      if ($page.data.isAuthenticated) {
+        console.log('User is authenticated, redirecting to:', DEFAULT_AUTH_REDIRECT);
+        await goto(DEFAULT_AUTH_REDIRECT, { replaceState: true });
+      }
+    } catch (e) {
+      console.error('Error in auth flow:', e);
+      error = 'Authentication failed. Please try again.';
+    } finally {
+      loading = false;
+    }
+  });
+</script>
+
+{#if loading}
+  <div class="login-container">
+    <div class="card loading-card">
+      <p class="loading-text">Loading...</p>
+    </div>
+  </div>
+{:else}
+  <div class="login-container">
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">Design System Docs</h2>
+        <p class="card-description">
+          Sign in to your account to access the design system documentation
+        </p>
+      </div>
+      <div class="card-content">
+        {#if error}
+          <div class="error-message">
+            {error}
+          </div>
+        {/if}
+        <button 
+          class="github-button"
+          onclick={handleGitHubLogin}
+          disabled={isLoggingIn}
+        >
+          <svg class="github-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+          </svg>
+          {isLoggingIn ? 'Connecting...' : 'Continue with GitHub'}
+        </button>
+        <p class="terms-text">
+          By continuing, you agree to our Terms of Service and Privacy Policy
+        </p>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .login-container {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 28rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background-color: var(--color-card);
+    backdrop-filter: var(--blur-backdrop);
+    padding: var(--spacing-8);
+  }
+
+  .loading-card {
+    width: auto;
+    padding: var(--spacing-4) var(--spacing-6);
+  }
+
+  .loading-text {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    margin: 0;
+  }
+
+  .card-header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .card-title {
+    font-size: var(--font-size-2xl);
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: var(--color-text-primary);
+    margin: 0 0 1rem 0;
+  }
+
+  .card-description {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    margin: 0;
+  }
+
+  .card-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .github-button {
+    width: 100%;
+    height: 3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background-color: var(--color-neutral-900);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .github-button:hover {
+    background-color: var(--color-neutral-800);
+    color: white;
+  }
+
+  .github-button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .github-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .terms-text {
+    text-align: center;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    margin: 1rem 0 0 0;
+  }
+
+  .error-message {
+    color: var(--color-error);
+    font-size: var(--font-size-sm);
+    text-align: center;
+    padding: var(--spacing-2);
+    background-color: var(--color-error-bg);
+    border-radius: var(--radius-sm);
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\+layout.svelte 
+<script lang="ts">
+  import { page } from '$app/stores';
+
+  // Get user data from the server
+  const { user } = $page.data;
+</script>
+
+<slot />  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\dashboard\+page.svelte 
+<!-- Main dashboard showing all tokens -->
+<script lang="ts">
+  import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
+  import { routes } from '$lib/config/routes';
+  import Sidebar from '$lib/components/Sidebar.svelte';
+  import TokenTable from '$lib/components/TokenTable.svelte';
+  import { collectionsStore } from '$lib/stores/collections';
+  import type { TokenItem } from '$lib/types';
+  import { onMount } from 'svelte';
+
+  let tokens: TokenItem[] = [];
+  let pageTitle = 'All Tokens';
+  let pageDescription = 'View all design tokens across collections';
+  let isLoading = true;
+
+  onMount(async () => {
+    try {
+      await collectionsStore.load();
+      isLoading = false;
+    } catch (error) {
+      console.error('Error loading collections:', error);
+    }
+  });
+
+  $: {
+    // Show all tokens from all collections and categories
+    tokens = $collectionsStore.flatMap(c => 
+      c.items.flatMap(item => item.items || [])
+    );
+  }
+
+  async function handleLogout() {
+    document.cookie = 'jwt=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    document.cookie = 'github_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    document.cookie = 'is_authenticated=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    goto(routes.LOGIN, { replaceState: true });
+  }
+</script>
+
+<div class="dashboard">
+  <Sidebar />
+  
+  <div class="main-content">
+    <nav class="nav">
+      <div class="nav-content">
+        <div class="nav-brand">
+          <h1>Design System</h1>
+        </div>
+        <div class="nav-actions">
+          <button 
+            class="icon-button" 
+            onclick={handleLogout}
+            aria-label="Logout"
           >
-            {isCreatingRepo ? 'Creating...' : 'Create GitHub Repository'}
+            <svg class="icon" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
           </button>
         </div>
+      </div>
+    </nav>
 
-        <button class="logout-button" on:click={handleLogout}>
-          Logout
+    <main class="container">
+      <div class="container">
+        <div class="header">
+          <h1>{pageTitle}</h1>
+          {#if pageDescription}
+            <p class="description">{pageDescription}</p>
+          {/if}
+        </div>
+
+        {#if isLoading}
+          <div class="loading">Loading collections...</div>
+        {:else}
+          <TokenTable {tokens} />
+        {/if}
+      </div>
+    </main>
+  </div>
+</div>
+
+<style>
+  .dashboard {
+    min-height: 100vh;
+    height: 100vh;
+    background: var(--color-background);
+    display: flex;
+    overflow: hidden;
+  }
+
+  .main-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .nav {
+    background: var(--color-card);
+    border-bottom: 1px solid var(--color-card-border);
+    padding: var(--spacing-4);
+    flex-shrink: 0;
+  }
+
+  .nav-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .nav-brand h1 {
+    font-size: var(--font-size-xl);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+
+  .icon-button {
+    background: none;
+    border: none;
+    padding: var(--spacing-2);
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    transition: color var(--transition-base);
+  }
+
+  .icon-button:hover {
+    color: var(--color-text-primary);
+  }
+
+  .icon {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .container {
+    padding: var(--spacing-6);
+    max-width: 1200px;
+    margin: 0 auto;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    color: var(--color-text-secondary);
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\dashboard\[collectionId]\+page.svelte 
+<!-- Reuse the dashboard layout but with collection-specific logic -->
+<script lang="ts">
+  import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
+  import { routes } from '$lib/config/routes';
+  import Sidebar from '$lib/components/Sidebar.svelte';
+  import TokenTable from '$lib/components/TokenTable.svelte';
+  import { collectionsStore } from '$lib/stores/collections';
+  import type { TokenItem } from '$lib/types';
+  import { onMount } from 'svelte';
+
+  let tokens: TokenItem[] = [];
+  let pageTitle = '';
+  let pageDescription = '';
+  let isLoading = true;
+
+  onMount(async () => {
+    try {
+      await collectionsStore.load();
+      isLoading = false;
+    } catch (error) {
+      console.error('Error loading collections:', error);
+    }
+  });
+
+  $: {
+    const { collectionId } = $page.params;
+    const collection = $collectionsStore.find(c => c.id === collectionId);
+    
+    if (collection) {
+      tokens = collection.items.flatMap(item => item.items || []);
+      pageTitle = collection.name;
+      pageDescription = collection.description || '';
+    }
+  }
+
+  async function handleLogout() {
+    document.cookie = 'jwt=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    document.cookie = 'github_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    document.cookie = 'is_authenticated=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    goto(routes.LOGIN, { replaceState: true });
+  }
+</script>
+
+<div class="dashboard">
+  <Sidebar />
+  
+  <div class="main-content">
+    <nav class="nav">
+      <div class="nav-content">
+        <div class="nav-brand">
+          <h1>Design System</h1>
+        </div>
+        <div class="nav-actions">
+          <button 
+            class="icon-button" 
+            onclick={handleLogout}
+            aria-label="Logout"
+          >
+            <svg class="icon" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="container">
+      <div class="container">
+        <div class="header">
+          <h1>{pageTitle}</h1>
+          {#if pageDescription}
+            <p class="description">{pageDescription}</p>
+          {/if}
+        </div>
+
+        {#if isLoading}
+          <div class="loading">Loading collections...</div>
+        {:else}
+          <TokenTable {tokens} />
+        {/if}
+      </div>
+    </main>
+  </div>
+</div>
+
+<style>
+  .dashboard {
+    min-height: 100vh;
+    height: 100vh;
+    background: var(--color-background);
+    display: flex;
+    overflow: hidden;
+  }
+
+  .main-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .nav {
+    background: var(--color-card);
+    border-bottom: 1px solid var(--color-card-border);
+    padding: var(--spacing-4);
+    flex-shrink: 0;
+  }
+
+  .nav-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .nav-brand h1 {
+    font-size: var(--font-size-xl);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+
+  .icon-button {
+    background: none;
+    border: none;
+    padding: var(--spacing-2);
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    transition: color var(--transition-base);
+  }
+
+  .icon-button:hover {
+    color: var(--color-text-primary);
+  }
+
+  .icon {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .container {
+    padding: var(--spacing-6);
+    max-width: 1200px;
+    margin: 0 auto;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    color: var(--color-text-secondary);
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\dashboard\[collectionId]\[categoryId]\+page.svelte 
+<!-- Reuse the dashboard layout but with category-specific logic -->
+<script lang="ts">
+  import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
+  import { routes } from '$lib/config/routes';
+  import Sidebar from '$lib/components/Sidebar.svelte';
+  import TokenTable from '$lib/components/TokenTable.svelte';
+  import { collectionsStore } from '$lib/stores/collections';
+  import type { TokenItem } from '$lib/types';
+  import { onMount } from 'svelte';
+
+  let tokens: TokenItem[] = [];
+  let pageTitle = '';
+  let pageDescription = '';
+  let isLoading = true;
+
+  onMount(async () => {
+    try {
+      await collectionsStore.load();
+      isLoading = false;
+    } catch (error) {
+      console.error('Error loading collections:', error);
+    }
+  });
+
+  $: {
+    const { collectionId, categoryId } = $page.params;
+    const collection = $collectionsStore.find(c => c.id === collectionId);
+    
+    if (collection) {
+      const category = collection.items.find(item => item.id === categoryId);
+      if (category) {
+        tokens = category.items || [];
+        pageTitle = `${collection.name} - ${category.name}`;
+        pageDescription = category.description || '';
+      }
+    }
+  }
+
+  async function handleLogout() {
+    document.cookie = 'jwt=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    document.cookie = 'github_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    document.cookie = 'is_authenticated=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    goto(routes.LOGIN, { replaceState: true });
+  }
+</script>
+
+<div class="dashboard">
+  <Sidebar />
+  
+  <div class="main-content">
+    <nav class="nav">
+      <div class="nav-content">
+        <div class="nav-brand">
+          <h1>Design System</h1>
+        </div>
+        <div class="nav-actions">
+          <button 
+            class="icon-button" 
+            onclick={handleLogout}
+            aria-label="Logout"
+          >
+            <svg class="icon" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="container">
+      <div class="container">
+        <div class="header">
+          <h1>{pageTitle}</h1>
+          {#if pageDescription}
+            <p class="description">{pageDescription}</p>
+          {/if}
+        </div>
+
+        {#if isLoading}
+          <div class="loading">Loading collections...</div>
+        {:else}
+          <TokenTable {tokens} />
+        {/if}
+      </div>
+    </main>
+  </div>
+</div>
+
+<style>
+  .dashboard {
+    min-height: 100vh;
+    height: 100vh;
+    background: var(--color-background);
+    display: flex;
+    overflow: hidden;
+  }
+
+  .main-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .nav {
+    background: var(--color-card);
+    border-bottom: 1px solid var(--color-card-border);
+    padding: var(--spacing-4);
+    flex-shrink: 0;
+  }
+
+  .nav-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .nav-brand h1 {
+    font-size: var(--font-size-xl);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+
+  .icon-button {
+    background: none;
+    border: none;
+    padding: var(--spacing-2);
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    transition: color var(--transition-base);
+  }
+
+  .icon-button:hover {
+    color: var(--color-text-primary);
+  }
+
+  .icon {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .container {
+    padding: var(--spacing-6);
+    max-width: 1200px;
+    margin: 0 auto;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    color: var(--color-text-secondary);
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\setup\+page.svelte 
+<script lang="ts">
+  import { goto } from '$app/navigation';
+  import { routes } from '$lib/config/routes';
+  import '$lib/styles/tokens.css';
+
+  let activeTab = $state('create');
+  let isConnected = $state(false);
+  let connectedRepo = $state('');
+  let repoName = $state('');
+  let repoUrl = $state('');
+  let isCreatingRepo = $state(false);
+
+  async function handleCreateRepo(event: SubmitEvent) {
+    event.preventDefault();
+    isCreatingRepo = true;
+
+    try {
+      const response = await fetch('http://localhost:1337/api/github/create-repo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: repoName,
+          description: 'Created via Design System Docs',
+          private: false,
+          auto_init: true
+        }),
+        credentials: 'include' // Use httpOnly cookies
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || response.statusText);
+      }
+
+      const { data: responseData } = await response.json();
+      console.log('Repository created:', responseData);
+      connectedRepo = responseData.full_name;
+      isConnected = true;
+    } catch (error) {
+      console.error('Error creating repository:', error);
+      alert(error instanceof Error ? error.message : 'Failed to create repository');
+    } finally {
+      isCreatingRepo = false;
+    }
+  }
+
+  function handleConnectRepo(event: SubmitEvent) {
+    event.preventDefault();
+    connectedRepo = repoUrl;
+    isConnected = true;
+  }
+
+  function handleDisconnectRepo() {
+    isConnected = false;
+    connectedRepo = '';
+    activeTab = 'create';
+  }
+
+  async function handleLogout() {
+    try {
+      // Call Strapi's logout endpoint to clear httpOnly cookies
+      const response = await fetch('http://localhost:1337/api/auth/logout', {
+        method: 'GET',
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to logout');
+      }
+      
+      // Clear any client-side state
+      localStorage.removeItem('user');
+      
+      // Redirect to login
+      goto(routes.LOGIN, { replaceState: true });
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
+  }
+</script>
+
+<div class="container">
+  <div class="card">
+    <div class="card-header">
+      <div class="header-content">
+        <h2 class="card-title">Repository Setup</h2>
+        <button 
+          class="icon-button" 
+          onclick={handleLogout}
+          aria-label="Logout"
+        >
+          <svg class="icon" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
         </button>
       </div>
-    {:else}
-      <button 
-        class="github-button"
-        on:click={handleGitHubLogin}
-        disabled={isLoggingIn}
-      >
-        {isLoggingIn ? 'Connecting...' : 'Login with GitHub'}
-      </button>
-    {/if}
-  </main>
-  
-  <style>
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 2rem;
-      text-align: center;
-    }
-  
-    .github-button {
-      background-color: #24292e;
-      color: white;
-      border: none;
-      padding: 12px 24px;
-      border-radius: 6px;
-      font-size: 16px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 20px;
-      transition: background-color 0.2s;
-      text-decoration: none;
-    }
-  
-    .github-button:hover {
-      background-color: #2f363d;
-    }
-  
-    .user-info {
-      margin-top: 20px;
-    }
-  
-    .logout-button {
-      background-color: #dc3545;
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-top: 10px;
-    }
-  
-    .logout-button:hover {
-      background-color: #c82333;
-    }
-  
-    .create-repo-form {
-      margin: 20px 0;
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-    }
-  
-    .create-repo-form input {
-      padding: 8px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      width: 200px;
-    }
-  
-    .create-repo-button {
-      background-color: #2ea44f;
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-  
-    .create-repo-button:hover {
-      background-color: #2c974b;
-    }
-  
-    .create-repo-button:disabled {
-      background-color: #94d3a2;
-      cursor: not-allowed;
-    }
-  </style> 
-E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\auth.js 
-export async function refreshToken() {
-  const jwt = localStorage.getItem('jwt');
-  if (!jwt) return;
+      <p class="card-description">
+        Create a new repository or connect to an existing one to get started
+      </p>
+    </div>
 
-  try {
-    const response = await fetch('http://localhost:1337/api/token/refresh', {
-      headers: {
-        'Authorization': `Bearer ${jwt}`
-      }
-    });
-    if (response.ok) {
-      const data = await response.json();
-      localStorage.setItem('jwt', data.jwt);
-    }
-  } catch (error) {
-    console.error('Token refresh failed:', error);
+    <div class="card-content">
+      {#if !isConnected}
+        <div class="tabs">
+          <div class="tabs-list">
+            <button
+              class="tab-trigger"
+              class:active={activeTab === 'create'}
+              onclick={() => activeTab = 'create'}
+            >
+              Create New
+            </button>
+            <button
+              class="tab-trigger"
+              class:active={activeTab === 'connect'}
+              onclick={() => activeTab = 'connect'}
+            >
+              Connect Existing
+            </button>
+          </div>
+
+          {#if activeTab === 'create'}
+            <form onsubmit={handleCreateRepo} class="form">
+              <div class="form-group">
+                <label for="repoName" class="label">Repository Name</label>
+                <input
+                  id="repoName"
+                  bind:value={repoName}
+                  placeholder="e.g., design-system"
+                  class="input"
+                  required
+                />
+              </div>
+              <button 
+                type="submit" 
+                class="submit-button"
+                disabled={isCreatingRepo}
+              >
+                <svg class="icon" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+                {isCreatingRepo ? 'Creating...' : 'Create Repository'}
+              </button>
+            </form>
+          {:else}
+            <form onsubmit={handleConnectRepo} class="form">
+              <div class="form-group">
+                <label for="repoUrl" class="label">Repository URL</label>
+                <input
+                  id="repoUrl"
+                  bind:value={repoUrl}
+                  placeholder="https://github.com/username/repo"
+                  class="input"
+                  required
+                />
+              </div>
+              <button type="submit" class="submit-button">
+                <svg class="icon" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                Connect Repository
+              </button>
+            </form>
+          {/if}
+        </div>
+      {:else}
+        <div class="connected-repo">
+          <div class="label">Connected Repository</div>
+          <div class="repo-display">
+            <svg class="icon" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+            </svg>
+            <input
+              value={connectedRepo}
+              readonly
+              class="repo-url"
+            />
+            <button 
+              class="icon-link-button" 
+              onclick={handleDisconnectRepo}
+              aria-label="Disconnect repository"
+            >
+              <svg class="icon icon-link" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              <svg class="icon icon-unlink" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+              </svg>
+              <span class="disconnect-text">Disconnect</span>
+            </button>
+          </div>
+          <button 
+            class="continue-button"
+            onclick={() => goto(routes.DASHBOARD)}
+          >
+            <span>Continue to Dashboard</span>
+            <svg class="icon" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      {/if}
+    </div>
+  </div>
+</div>
+
+<style>
+  .container {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
-}  
+
+  .card {
+    width: 100%;
+    max-width: 28rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background-color: var(--color-card);
+    backdrop-filter: var(--blur-backdrop);
+    padding: var(--spacing-8);
+  }
+
+  .card-header {
+    margin-bottom: var(--spacing-8);
+  }
+
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-4);
+  }
+
+  .card-title {
+    font-size: var(--font-size-2xl);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+
+  .card-description {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    margin: 0;
+  }
+
+  .tabs-list {
+    display: flex;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-6);
+  }
+
+  .tab-trigger {
+    flex: 1;
+    padding: var(--spacing-2) var(--spacing-4);
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .tab-trigger.active {
+    background-color: var(--color-neutral-800);
+    color: var(--color-text-primary);
+  }
+
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+  }
+
+  .label {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  .input {
+    padding: var(--spacing-2) var(--spacing-3);
+    background-color: var(--color-neutral-900);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+  }
+
+  .submit-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3) var(--spacing-4);
+    background-color: var(--color-emerald-600);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .submit-button:hover {
+    background-color: var(--color-emerald-700);
+  }
+
+  .icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .icon-button {
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    padding: var(--spacing-2);
+    border-radius: var(--radius-sm);
+    transition: var(--transition-base);
+  }
+
+  .icon-button:hover {
+    background-color: var(--color-neutral-800);
+    color: var(--color-text-primary);
+  }
+
+  .connected-repo {
+    margin-top: var(--spacing-6);
+  }
+
+  .repo-display {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-card-border);
+    background-color: var(--color-neutral-900);
+  }
+
+  .repo-url {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    padding: 0;
+  }
+
+  .repo-url:focus {
+    outline: none;
+  }
+
+  .icon-link-button {
+    position: relative;
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    padding: var(--spacing-2);
+    border-radius: var(--radius-sm);
+    transition: var(--transition-base);
+    display: flex;
+    align-items: center;
+  }
+
+  .icon-link-button:hover {
+    color: var(--color-text-primary);
+  }
+
+  .icon-link-button .icon-unlink {
+    display: none;
+  }
+
+  .icon-link-button:hover .icon-link {
+    display: none;
+  }
+
+  .icon-link-button:hover .icon-unlink {
+    display: block;
+  }
+
+  .disconnect-text {
+    position: absolute;
+    right: calc(100% + var(--spacing-2));
+    background-color: var(--color-neutral-800);
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    opacity: 0;
+    visibility: hidden;
+    transition: var(--transition-base);
+    white-space: nowrap;
+  }
+
+  .submit-button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    background-color: var(--color-neutral-800);
+  }
+
+  .continue-button {
+    width: 100%;
+    margin-top: var(--spacing-4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3) var(--spacing-4);
+    background-color: var(--color-emerald-600);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .continue-button:hover {
+    background-color: var(--color-emerald-700);
+  }
+
+  .continue-button svg {
+    width: 16px;
+    height: 16px;
+  }
+</style>  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\tokens\+page.svelte 
+<script lang="ts">
+  import { page } from '$app/stores';
+  import TokenModal from '$lib/components/TokenModal.svelte';
+  import { collectionsStore } from '$lib/stores/collections';
+  import type { Collection, CollectionItem } from '$lib/types';
+
+  let isOpen = $state(false);
+  let selectedCollection = $state<Collection | undefined>(undefined);
+  let selectedCategory = $state<CollectionItem | undefined>(undefined);
+
+  $effect(() => {
+    const { collectionId, categoryId } = $page.params;
+    selectedCollection = $collectionsStore.find(c => c.id === collectionId);
+    selectedCategory = selectedCollection?.items.find(item => item.id === categoryId);
+  });
+</script>
+
+<div>
+  <TokenModal
+    bind:isOpen
+    collectionId={selectedCollection?.id || ''}
+    categoryId={selectedCategory?.id || ''}
+    on:save={() => {
+      isOpen = false;
+      // Refresh collections after save
+      collectionsStore.load();
+    }}
+  />
+</div>  
 E:\Projekte\Coding\github\Design-System-Docs\frontend\src\app.d.ts 
-// See https://svelte.dev/docs/kit/types#app.d.ts
+/// <reference types="@sveltejs/kit" />
+/// <reference types="svelte" />
+/// <reference types="vite/client" />
+
+declare module '$app/stores' {
+	import type { Readable } from 'svelte/store';
+	import type { Navigation, Page } from '@sveltejs/kit';
+
+	export const page: Readable<Page>;
+	export const navigating: Readable<Navigation | null>;
+}
+
+declare module '$app/navigation' {
+	export function goto(
+		url: string | URL,
+		opts?: {
+			replaceState?: boolean;
+			noscroll?: boolean;
+			keepfocus?: boolean;
+			state?: any;
+		}
+	): Promise<void>;
+}
+
+declare module 'svelte/runes' {
+	export interface State<T> {
+		value: T;
+		get: () => T;
+		set: (value: T) => void;
+	}
+
+	export interface Derived<T> {
+		value: T;
+		get: () => T;
+	}
+
+	export function state<T>(value: T): State<T>;
+	export function derived<T>(fn: () => T): Derived<T>;
+}
+
+declare module '$lib/stores/collections' {
+	import type { Collection } from '$lib/types';
+	import type { Readable } from 'svelte/store';
+
+	export const collections: Readable<Collection[]> & {
+		load: (customFetch?: typeof fetch) => Promise<void>;
+		save: (collections: Collection[], customFetch?: typeof fetch) => Promise<void>;
+		reset: () => void;
+	};
+}
+
+declare module '$lib/types' {
+	export interface Extension {
+		id: string;
+		[key: string]: any;
+	}
+
+	export interface Extensions {
+		'com.username.myapp': Extension;
+		[key: string]: Extension;
+	}
+
+	export interface Collection {
+		id: string;
+		name: string;
+		description?: string;
+		items: CollectionItem[];
+		extensions?: Extensions;
+	}
+
+	export interface CollectionItem {
+		id: string;
+		name: string;
+		description?: string;
+		items?: TokenItem[];
+		extensions?: Extensions;
+	}
+
+	export interface TokenItem {
+		id: string;
+		name: string;
+		type: TokenType;
+		value: TokenValueType;
+		description?: string;
+		tokenData?: TokenData;
+		extensions?: Extensions;
+	}
+
+	export type TokenType = 'color' | 'typography' | 'spacing' | 'dimension';
+
+	export interface TypographyValue {
+		'font-family': string;
+		'font-size': string;
+		'font-weight': number;
+		'line-height': string;
+		'letter-spacing': string;
+	}
+
+	export interface DimensionValue {
+		value: string | number;
+		unit: string;
+	}
+
+	export type TokenValueType = string | DimensionValue | TypographyValue;
+
+	export interface TokenData {
+		type: TokenType;
+		description: string;
+		value: TokenValueType;
+		createdAt: string;
+		updatedAt: string;
+		source?: string;
+	}
+}
+
+// See https://kit.svelte.dev/docs/types#app
 // for information about these interfaces
 declare global {
 	namespace App {
 		// interface Error {}
-		// interface Locals {}
-		// interface PageData {}
-		// interface PageState {}
+		interface Locals {
+			user: {
+				isAuthenticated: boolean;
+				returnTo?: string;
+			};
+		}
+		interface PageData {
+			error?: string | null;
+			isAuthenticated: boolean;
+		}
 		// interface Platform {}
 	}
 }
 
 export {};
  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\hooks.client.ts 
+import type { HandleClientError } from '@sveltejs/kit';
+
+export const handleError: HandleClientError = ({ error, event }) => {
+  console.error('Client error:', error);
+  return {
+    message: 'An unexpected error occurred'
+  };
+};  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\hooks.server.ts 
+import { redirect, type Handle } from '@sveltejs/kit';
+
+export const handle: Handle = async ({ event, resolve }) => {
+  console.log('=== Hook Start ===');
+  console.log('URL:', event.url.toString());
+  
+  // Get auth state from cookies
+  const jwt = event.cookies.get('jwt');
+  const pathname = event.url.pathname;
+  const isProtectedRoute = pathname.includes('/(protected)/') || 
+                          pathname.startsWith('/setup') || 
+                          pathname.startsWith('/dashboard') ||
+                          pathname.startsWith('/tokens');
+  
+  console.log('Auth state:', {
+    hasJwt: !!jwt,
+    isProtectedRoute,
+    pathname
+  });
+  
+  // Set auth state in locals
+  event.locals.user = {
+    isAuthenticated: !!jwt,
+    // Only store returnTo for protected routes
+    returnTo: isProtectedRoute ? pathname : undefined
+  };
+  
+  // If accessing a protected route without auth, redirect to login
+  if (isProtectedRoute && !jwt) {
+    console.log('Protected route accessed without auth, redirecting to login');
+    // Store the return URL in a cookie
+    event.cookies.set('returnTo', pathname, {
+      path: '/',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 5 // 5 minutes expiry for security
+    });
+    
+    // Clear any existing auth cookies
+    event.cookies.delete('jwt', { path: '/' });
+    event.cookies.delete('github_token', { path: '/' });
+    event.cookies.delete('is_authenticated', { path: '/' });
+    
+    throw redirect(303, '/');
+  }
+  
+  console.log('=== Hook End ===');
+  const response = await resolve(event);
+  return response;
+};  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\auth.ts 
+export interface User {
+    id: string;
+    username: string;
+    email: string;
+  }
+  
+  export async function refreshToken() {
+    const jwt = localStorage.getItem('jwt');
+    if (!jwt) {
+      console.log('No JWT found in storage for refresh');
+      return null;
+    }
+  
+    try {
+      console.log('Refreshing token...');
+      const response = await fetch('http://localhost:1337/api/auth/refresh', {
+        headers: {
+          'Authorization': `Bearer ${jwt}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Token refresh failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        return null;
+      }
+      
+      const data = await response.json();
+      localStorage.setItem('jwt', data.jwt);
+      console.log('Token refreshed successfully');
+      return data.jwt;
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      return null;
+    }
+  }
+  
+  export async function getUser(): Promise<User | null> {
+    const jwt = localStorage.getItem('jwt');
+    if (!jwt) {
+      console.log('No JWT found in storage for user fetch');
+      return null;
+    }
+  
+    try {
+      console.log('Fetching user data...');
+      const response = await fetch('http://localhost:1337/api/users/me', {
+        headers: {
+          'Authorization': `Bearer ${jwt}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to fetch user data:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        return null;
+      }
+      
+      const userData = await response.json();
+      console.log('User data fetched successfully:', userData);
+      localStorage.setItem('user', JSON.stringify(userData));
+      return userData;
+    } catch (error) {
+      console.error('Failed to get user:', error);
+      return null;
+    }
+  }
+  
+  export async function exchangeToken(jwt: string) {
+    if (!jwt) {
+      console.error('No JWT provided for exchange');
+      throw new Error('No JWT provided');
+    }
+  
+    try {
+      console.log('Storing JWT in localStorage...');
+      localStorage.setItem('jwt', jwt);
+      console.log('JWT stored successfully');
+      return jwt;
+    } catch (error) {
+      console.error('Failed to store JWT:', error);
+      throw error;
+    }
+  }  
 E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\index.ts 
 // place files you want to import through the `$lib` alias in this folder.
  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\types.ts 
+// frontend/src/lib/types.ts
+
+// Remove the type declarations since they're in app.d.ts
+// Instead, we'll use the global types directly
+
+// Base interface for shared properties
+interface BaseItem {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+// Token interface with all properties
+export interface TokenItem extends BaseItem {
+  type: TokenType;
+  value: TokenValueType;
+  createdAt?: string;
+  updatedAt?: string;
+  source?: string;
+  items?: TokenItem[];
+}
+
+// Collection item (category)
+export interface CollectionItem extends BaseItem {
+  items?: TokenItem[];
+}
+
+// Collection
+export interface Collection extends BaseItem {
+  items: CollectionItem[];
+}
+
+// Re-export Token as TokenItem for backward compatibility
+export type Token = TokenItem; 
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\utils.ts 
+export function cn(...classes: (string | boolean | undefined | null)[]) {
+  return classes.filter(Boolean).join(' ');
+}  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\config\routes.ts 
+export const routes = {
+  // Public routes
+  LOGIN: '/',
+  
+  // Protected routes
+  SETUP: '/setup',
+  DASHBOARD: '/dashboard',
+  TOKENS: '/tokens'
+} as const;
+
+// Default route after authentication if no returnTo is specified
+export const DEFAULT_AUTH_REDIRECT = routes.SETUP;  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\services\api.ts 
+import type { Collection } from '../types';
+
+interface CollectionJson {
+  description: string;
+  extensions: {
+    'com.username.myapp': {
+      id: string;
+    };
+  };
+  [key: string]: any;
+}
+
+const BASE_URL = '/api';
+
+const collectionsAPI = {
+  async getCollections(fetchFn = fetch) {
+    const response = await fetchFn(`${BASE_URL}/collections`);
+    if (!response.ok) {
+      console.error('Failed to fetch collections:', await response.text());
+      throw new Error('Failed to fetch collections');
+    }
+    return response.json();
+  },
+
+  async saveCollections(collections: any, fetchFn = fetch) {
+    const response = await fetchFn(`${BASE_URL}/collections`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(collections),
+    });
+    if (!response.ok) {
+      console.error('Failed to save collections:', await response.text());
+      throw new Error('Failed to save collections');
+    }
+    return response.json();
+  },
+};
+
+export default collectionsAPI;  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\stores\collections.ts 
+import { writable } from 'svelte/store';
+import type { Collection } from '../types';
+import collectionsAPI from '$lib/services/api';
+import collectionsData from '../data/collections.json';
+
+function createCollectionsStore() {
+  const { subscribe, set, update } = writable<Collection[]>([]);
+
+  function createUniqueId() {
+    return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  function transformCollectionsFromJson() {
+    return Object.entries(collectionsData)
+      .filter(([key]) => key !== 'description' && key !== 'extensions')
+      .map(([name, data]: [string, any]) => ({
+        id: data.extensions?.['com.username.myapp']?.id || createUniqueId(),
+        name,
+        description: data.description || '',
+        items: Object.entries(data)
+          .filter(([key]) => key !== 'description' && key !== 'extensions')
+          .map(([categoryName, categoryData]: [string, any]) => ({
+            id: categoryData.extensions?.['com.username.myapp']?.id || createUniqueId(),
+            name: categoryName,
+            description: categoryData.description || '',
+            items: Object.entries(categoryData)
+              .filter(([key]) => key !== 'description' && key !== 'extensions')
+              .map(([tokenName, tokenData]: [string, any]) => ({
+                id: tokenData.extensions?.['com.username.myapp']?.id || createUniqueId(),
+                name: tokenName,
+                value: tokenData.value,
+                type: tokenData.type,
+                description: tokenData.description || ''
+              }))
+          }))
+      }));
+  }
+
+  return {
+    subscribe,
+    set,
+    update,
+
+    async save(collections: Collection[]) {
+      try {
+        // First save to the API (which writes to collections.json)
+        await collectionsAPI.saveCollections(collections, fetch);
+        
+        // Then update the local store
+        set(collections);
+        
+        console.log('Collections saved successfully');
+      } catch (error) {
+        console.error('Error saving collections:', error);
+        throw error;
+      }
+    },
+
+    async load() {
+      try {
+        // Try to load from the API first
+        const collections = await collectionsAPI.getCollections(fetch);
+        set(collections);
+        console.log('Collections loaded from API successfully');
+      } catch (error) {
+        console.warn('Failed to load from API, using local JSON:', error);
+        // Fallback to local JSON file
+        const collections = transformCollectionsFromJson();
+        set(collections);
+        console.log('Collections loaded from local JSON successfully');
+      }
+    },
+
+    addToken(collectionId: string, categoryId: string, token: any) {
+      update(collections => {
+        const collection = collections.find(c => c.id === collectionId);
+        if (collection) {
+          const category = collection.items.find(item => item.id === categoryId);
+          if (category) {
+            if (!category.items) {
+              category.items = [];
+            }
+            category.items.push({
+              ...token,
+              id: createUniqueId()
+            });
+          }
+        }
+        return collections;
+      });
+    },
+
+    deleteToken(collectionId: string, categoryId: string, tokenId: string) {
+      update(collections => {
+        const collection = collections.find(c => c.id === collectionId);
+        if (collection) {
+          const category = collection.items.find(item => item.id === categoryId);
+          if (category && category.items) {
+            category.items = category.items.filter(token => token.id !== tokenId);
+          }
+        }
+        return collections;
+      });
+    }
+  };
+}
+
+export const collectionsStore = createCollectionsStore();  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\stores\uiState.ts 
+import { writable } from 'svelte/store';
+import { browser } from '$app/environment';
+
+interface CollectionState {
+  isOpen: boolean;
+}
+
+const STORAGE_KEY = 'collection_states';
+
+class CollectionStates {
+  private states: Map<string, CollectionState>;
+
+  constructor() {
+    this.states = new Map();
+    if (browser) {
+      // Load saved states from localStorage
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          Object.entries(parsed).forEach(([id, state]) => {
+            this.states.set(id, state as CollectionState);
+          });
+        }
+      } catch (error) {
+        console.error('Error loading collection states:', error);
+      }
+    }
+  }
+
+  getState(id: string): CollectionState {
+    if (!this.states.has(id)) {
+      this.states.set(id, { isOpen: false });
+    }
+    return this.states.get(id)!;
+  }
+
+  setState(id: string, state: CollectionState) {
+    this.states.set(id, state);
+    if (browser) {
+      // Save to localStorage
+      try {
+        const statesObj = Object.fromEntries(this.states);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(statesObj));
+      } catch (error) {
+        console.error('Error saving collection states:', error);
+      }
+    }
+  }
+}
+
+function createCollectionStatesStore() {
+  const { subscribe, set, update } = writable(new CollectionStates());
+
+  return {
+    subscribe,
+    update,
+    getState: (id: string) => {
+      let states: CollectionStates;
+      subscribe(s => states = s)();
+      return states!.getState(id);
+    }
+  };
+}
+
+export const collectionStates = createCollectionStatesStore();
+
+export function setCollectionOpen(id: string, isOpen: boolean) {
+  collectionStates.update((states: CollectionStates) => {
+    states.setState(id, { isOpen });
+    return states;
+  });
+}  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\lib\utils\api.ts 
+/**
+ * Helper function for making authenticated API calls
+ */
+export async function fetchApi(endpoint: string, options: RequestInit = {}) {
+    const jwt = localStorage.getItem('jwt');
+    
+    if (!jwt) {
+        throw new Error('No authentication token found');
+    }
+
+    const headers = new Headers(options.headers);
+    headers.set('Authorization', `Bearer ${jwt}`);
+
+    const response = await fetch(`/api/${endpoint.replace(/^\//, '')}`, {
+        ...options,
+        headers
+    });
+
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+    }
+
+    return response.json();
+}
+
+/**
+ * Get collections data
+ */
+export async function getCollections() {
+    return fetchApi('collections');
+}
+
+/**
+ * Update collections data
+ */
+export async function updateCollections(collections: any) {
+    return fetchApi('collections', {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(collections)
+    });
+}  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+layout.server.ts 
+import type { LayoutServerLoad } from './$types';
+
+export const load: LayoutServerLoad = async ({ cookies }) => {
+  const jwt = cookies.get('jwt');
+  const returnTo = cookies.get('returnTo');
+  
+  return {
+    isAuthenticated: !!jwt,
+    returnTo
+  };
+};  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+page.server.ts 
+import { redirect } from '@sveltejs/kit';
+import type { PageServerLoad } from './$types';
+import { routes, DEFAULT_AUTH_REDIRECT } from '$lib/config/routes';
+
+export const load: PageServerLoad = async ({ cookies, url, locals }) => {
+  console.log('=== Server Load Start ===');
+  console.log('URL:', url.toString());
+  console.log('Search params:', Object.fromEntries(url.searchParams));
+  console.log('Auth state:', locals.user);
+
+  // Handle Strapi callback with tokens
+  if (url.searchParams.has('access_token') && url.searchParams.has('jwt')) {
+    console.log('Strapi callback detected with tokens');
+    
+    const jwt = url.searchParams.get('jwt');
+    const githubToken = url.searchParams.get('access_token');
+    
+    if (!jwt || !githubToken) {
+      console.error('Missing required tokens');
+      return {
+        error: 'Authentication failed. Missing required tokens.',
+        isAuthenticated: false
+      };
+    }
+
+    console.log('Setting cookies...');
+    cookies.set('jwt', jwt, { 
+      path: '/',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+    
+    cookies.set('github_token', githubToken, {
+      path: '/',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+
+    cookies.set('is_authenticated', 'true', {
+      path: '/',
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+
+    console.log('Cookies set:', { jwt: jwt.slice(0, 10) + '...', github: githubToken.slice(0, 10) + '...' });
+    throw redirect(303, DEFAULT_AUTH_REDIRECT);
+  }
+
+  // Only redirect if explicitly on the login page
+  if (locals.user?.isAuthenticated && url.pathname === routes.LOGIN) {
+    throw redirect(303, DEFAULT_AUTH_REDIRECT);
+  }
+
+  console.log('=== Server Load End ===');
+  return {
+    error: null,
+    isAuthenticated: locals.user?.isAuthenticated || false
+  };
+};  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\+page.ts 
+import type { PageLoad } from './$types';
+import { browser } from '$app/environment';
+import { goto } from '$app/navigation';
+
+export const load: PageLoad = async ({ data }) => {
+  console.log('=== Page Load Start ===');
+  console.log('Browser environment:', browser);
+  console.log('Page load data:', {
+    isAuthenticated: data.isAuthenticated,
+    hasError: !!data.error
+  });
+
+  // Only handle auth state if in browser
+  if (browser) {
+    console.log('Checking auth state...');
+    
+    if (data.isAuthenticated) {
+      console.log('User is authenticated');
+      // You can add additional client-side setup here if needed
+    } else {
+      console.log('User is not authenticated');
+      // Clear any stale auth state from localStorage
+      localStorage.removeItem('user');
+    }
+  } else {
+    console.log('Server-side load, skipping auth check');
+  }
+  
+  console.log('=== Page Load End ===');
+  return {
+    ...data
+  };
+};  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\+layout.server.ts 
+import type { LayoutServerLoad } from './$types';
+
+export const load: LayoutServerLoad = async ({ locals }) => {
+  return {
+    user: locals.user
+  };
+};  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\+layout.ts 
+import type { LayoutLoad } from './$types';
+
+export const load: LayoutLoad = async ({ data }) => {
+  return data;
+};  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\(protected)\setup\+page.ts 
+import type { PageLoad } from './$types';
+import { redirect } from '@sveltejs/kit';
+
+export const load: PageLoad = async ({ parent }) => {
+  const { user } = await parent();
+  
+  if (!user?.isAuthenticated) {
+    throw redirect(303, '/');
+  }
+  
+  return {
+    user
+  };
+};  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\api\auth\logout\+server.ts 
+import { json } from '@sveltejs/kit';
+import type { RequestHandler } from '@sveltejs/kit';
+
+// Note: We need to explicitly type this as RequestHandler
+export const POST = (async ({ cookies }) => {
+  // Clear all auth cookies with proper options
+  const cookieOptions = {
+    path: '/',
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const
+  };
+
+  // Clear the cookies we set during GitHub OAuth login
+  cookies.delete('jwt', cookieOptions);
+  cookies.delete('github_token', cookieOptions);
+  cookies.delete('is_authenticated', { 
+    ...cookieOptions, 
+    httpOnly: false 
+  });
+  cookies.delete('returnTo', cookieOptions); // Also clear any stored returnTo path
+
+  return json({ success: true });
+}) satisfies RequestHandler;  
+E:\Projekte\Coding\github\Design-System-Docs\frontend\src\routes\api\collections\+server.ts 
+import { json } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get the absolute path to collections.json
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const COLLECTIONS_PATH = path.join(process.cwd(), 'frontend', 'src', 'lib', 'data', 'collections.json');
+
+// Default empty collections structure
+const DEFAULT_COLLECTIONS = {};
+
+async function ensureDirectoryExists() {
+    const dir = path.dirname(COLLECTIONS_PATH);
+    try {
+        await fs.access(dir);
+    } catch {
+        await fs.mkdir(dir, { recursive: true });
+    }
+}
+
+async function readCollections() {
+    try {
+        await ensureDirectoryExists();
+        try {
+            const data = await fs.readFile(COLLECTIONS_PATH, 'utf-8');
+            return JSON.parse(data);
+        } catch (error: unknown) {
+            if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+                // File doesn't exist yet, return default structure
+                return DEFAULT_COLLECTIONS;
+            }
+            throw error;
+        }
+    } catch (error) {
+        console.error('Error reading collections:', error);
+        throw new Error('Failed to read collections');
+    }
+}
+
+async function writeCollections(collections: any) {
+    try {
+        await ensureDirectoryExists();
+        await fs.writeFile(COLLECTIONS_PATH, JSON.stringify(collections, null, 2), 'utf-8');
+    } catch (error) {
+        console.error('Error writing collections:', error);
+        throw new Error('Failed to write collections');
+    }
+}
+
+export const GET = (async () => {
+    try {
+        const collections = await readCollections();
+        return json(collections);
+    } catch (error) {
+        console.error('GET collections error:', error);
+        return new Response('Failed to fetch collections', { status: 500 });
+    }
+}) satisfies RequestHandler;
+
+export const PUT = (async ({ request }) => {
+    try {
+        const collections = await request.json();
+        await writeCollections(collections);
+        return json({ success: true });
+    } catch (error) {
+        console.error('PUT collections error:', error);
+        return new Response('Failed to save collections', { status: 500 });
+    }
+}) satisfies RequestHandler;  

@@ -1,269 +1,189 @@
-<!-- frontend/src/routes/+page.svelte -->
 <script lang="ts">
-    import { onMount } from 'svelte';
-    import { goto } from '$app/navigation';
-  
-    interface User {
-        username: string;
-        // Add other user properties as needed
-    }
-  
-    let user: User | null = null;
-    let loading = true;
-    let isLoggingIn = false;
-    let repoName = '';
-    let isCreatingRepo = false;
-  
-    const handleGitHubLogin = () => {
-      isLoggingIn = true;
-      console.log('Starting GitHub login...');
-      
-      // Store the current URL as the return URL
-      const returnUrl = encodeURIComponent(window.location.origin);
-      const loginUrl = `http://localhost:1337/api/connect/github?returnTo=${returnUrl}`;
-      
-      console.log('Redirecting to:', loginUrl);
-      window.location.href = loginUrl;
-    };
-  
-    const handleLogout = () => {
-      localStorage.removeItem('jwt');
-      localStorage.removeItem('github_token');
-      localStorage.removeItem('user');
-      user = null;
-    };
-  
-    const handleCreateRepo = async () => {
-      if (!repoName) return;
-      
-      isCreatingRepo = true;
-      try {
-        const jwt = localStorage.getItem('jwt');
-        const githubToken = localStorage.getItem('github_token');
-        
-        console.log('Tokens:', { 
-          jwt: jwt ? 'present' : 'missing', 
-          githubToken: githubToken ? 'present' : 'missing' 
-        });
-        
-        if (!jwt || !githubToken) {
-          throw new Error('Missing authentication tokens');
-        }
+  import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
+  import { routes, DEFAULT_AUTH_REDIRECT } from '$lib/config/routes';
 
-        const response = await fetch('http://localhost:1337/api/github/create-repo', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${jwt}`,
-            'GitHub-Token': githubToken,
-          },
-          body: JSON.stringify({
-            name: repoName,
-            description: 'Created via Design System Docs',
-            private: false,
-            auto_init: true
-          })
-        });
+  let isLoggingIn = $state(false);
+  let loading = $state(false);
+  let error = $state<string | null>($page.data.error || null);
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error?.message || response.statusText);
-        }
+  function handleGitHubLogin() {
+    isLoggingIn = true;
+    console.log('Starting GitHub login...');
+    
+    // Clear any existing auth state
+    localStorage.removeItem('user');
+    
+    const returnUrl = encodeURIComponent(`${window.location.origin}${routes.LOGIN}`);
+    const loginUrl = `http://localhost:1337/api/connect/github?returnTo=${returnUrl}`;
+    
+    console.log('Redirecting to:', loginUrl);
+    window.location.href = loginUrl;
+  }
 
-        const { data } = await response.json();
-        console.log('Repository created:', data);
-        repoName = '';
-        alert(`Repository created successfully! URL: ${data.html_url}`);
-      } catch (error) {
-        console.error('Error creating repository:', error);
-        alert(error instanceof Error ? error.message : 'Failed to create repository');
-      } finally {
-        isCreatingRepo = false;
-      }
-    };
-  
-    onMount(() => {
-      console.log('=== onMount ===');
-      console.log('Full URL:', window.location.href);
-      console.log('Search params:', window.location.search);
-      
-      // Check for tokens in URL (after GitHub redirect)
-      const params = new URLSearchParams(window.location.search);
-      const access_token = params.get('access_token');
-      const jwt = params.get('jwt');
-      const error = params.get('error');
-      
-      console.log('URL Parameters:', { 
-        access_token: access_token ? 'present' : 'missing',
-        jwt: jwt ? 'present' : 'missing',
-        error
+  onMount(async () => {
+    console.log('=== onMount ===');
+    loading = true;
+    
+    try {
+      // Check authentication state
+      console.log('Auth state:', {
+        isAuthenticated: $page.data.isAuthenticated,
+        hasError: !!$page.data.error
       });
       
-      if (error) {
-        console.error('Authentication error:', error);
-        alert('Failed to authenticate with GitHub');
-        window.history.replaceState({}, document.title, window.location.pathname);
-        return;
+      if ($page.data.isAuthenticated) {
+        console.log('User is authenticated, redirecting to:', DEFAULT_AUTH_REDIRECT);
+        await goto(DEFAULT_AUTH_REDIRECT, { replaceState: true });
       }
-      
-      if (access_token && jwt) {
-        console.log('Storing tokens in localStorage');
-        localStorage.setItem('github_token', access_token);
-        localStorage.setItem('jwt', jwt);
-        
-        // Fetch user data first
-        fetch('http://localhost:1337/api/users/me', {
-          headers: {
-            Authorization: `Bearer ${jwt}`,
-          },
-        })
-        .then(res => res.json())
-        .then(userData => {
-          console.log('User data received:', userData);
-          user = userData;
-          localStorage.setItem('user', JSON.stringify(userData));
-          // Use goto instead of window.history
-          goto('/', { replaceState: true });
-        })
-        .catch(error => {
-          console.error('Error fetching user data:', error);
-          goto('/', { replaceState: true });
-        });
-      } else {
-        console.log('No tokens found in URL');
-      }
-
-      // Check for existing session
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        try {
-          user = JSON.parse(storedUser);
-          console.log('Restored user from localStorage:', user);
-        } catch (e) {
-          console.error('Error parsing stored user:', e);
-          localStorage.removeItem('user');
-        }
-      }
+    } catch (e) {
+      console.error('Error in auth flow:', e);
+      error = 'Authentication failed. Please try again.';
+    } finally {
       loading = false;
-    });
-  </script>
-  
-  <main class="container">
-    <h1>Welcome to SvelteKit</h1>
-    
-    {#if loading}
-      <p>Loading...</p>
-    {:else if user}
-      <div class="user-info">
-        <p>Welcome, {user.username}!</p>
-        
-        <!-- Add repository creation form -->
-        <div class="create-repo-form">
-          <input
-            type="text"
-            bind:value={repoName}
-            placeholder="Enter repository name"
-            disabled={isCreatingRepo}
-          />
-          <button
-            class="create-repo-button"
-            on:click={handleCreateRepo}
-            disabled={!repoName || isCreatingRepo}
-          >
-            {isCreatingRepo ? 'Creating...' : 'Create GitHub Repository'}
-          </button>
-        </div>
+    }
+  });
+</script>
 
-        <button class="logout-button" on:click={handleLogout}>
-          Logout
-        </button>
+{#if loading}
+  <div class="login-container">
+    <div class="card loading-card">
+      <p class="loading-text">Loading...</p>
+    </div>
+  </div>
+{:else}
+  <div class="login-container">
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">Design System Docs</h2>
+        <p class="card-description">
+          Sign in to your account to access the design system documentation
+        </p>
       </div>
-    {:else}
-      <button 
-        class="github-button"
-        on:click={handleGitHubLogin}
-        disabled={isLoggingIn}
-      >
-        {isLoggingIn ? 'Connecting...' : 'Login with GitHub'}
-      </button>
-    {/if}
-  </main>
-  
-  <style>
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 2rem;
-      text-align: center;
-    }
-  
-    .github-button {
-      background-color: #24292e;
-      color: white;
-      border: none;
-      padding: 12px 24px;
-      border-radius: 6px;
-      font-size: 16px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 20px;
-      transition: background-color 0.2s;
-      text-decoration: none;
-    }
-  
-    .github-button:hover {
-      background-color: #2f363d;
-    }
-  
-    .user-info {
-      margin-top: 20px;
-    }
-  
-    .logout-button {
-      background-color: #dc3545;
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-top: 10px;
-    }
-  
-    .logout-button:hover {
-      background-color: #c82333;
-    }
-  
-    .create-repo-form {
-      margin: 20px 0;
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-    }
-  
-    .create-repo-form input {
-      padding: 8px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      width: 200px;
-    }
-  
-    .create-repo-button {
-      background-color: #2ea44f;
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-  
-    .create-repo-button:hover {
-      background-color: #2c974b;
-    }
-  
-    .create-repo-button:disabled {
-      background-color: #94d3a2;
-      cursor: not-allowed;
-    }
-  </style>
+      <div class="card-content">
+        {#if error}
+          <div class="error-message">
+            {error}
+          </div>
+        {/if}
+        <button 
+          class="github-button"
+          onclick={handleGitHubLogin}
+          disabled={isLoggingIn}
+        >
+          <svg class="github-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+          </svg>
+          {isLoggingIn ? 'Connecting...' : 'Continue with GitHub'}
+        </button>
+        <p class="terms-text">
+          By continuing, you agree to our Terms of Service and Privacy Policy
+        </p>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .login-container {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 28rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background-color: var(--color-card);
+    backdrop-filter: var(--blur-backdrop);
+    padding: var(--spacing-8);
+  }
+
+  .loading-card {
+    width: auto;
+    padding: var(--spacing-4) var(--spacing-6);
+  }
+
+  .loading-text {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    margin: 0;
+  }
+
+  .card-header {
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .card-title {
+    font-size: var(--font-size-2xl);
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: var(--color-text-primary);
+    margin: 0 0 1rem 0;
+  }
+
+  .card-description {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    margin: 0;
+  }
+
+  .card-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .github-button {
+    width: 100%;
+    height: 3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background-color: var(--color-neutral-900);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: var(--transition-base);
+  }
+
+  .github-button:hover {
+    background-color: var(--color-neutral-800);
+    color: white;
+  }
+
+  .github-button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .github-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .terms-text {
+    text-align: center;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    margin: 1rem 0 0 0;
+  }
+
+  .error-message {
+    color: var(--color-error);
+    font-size: var(--font-size-sm);
+    text-align: center;
+    padding: var(--spacing-2);
+    background-color: var(--color-error-bg);
+    border-radius: var(--radius-sm);
+  }
+</style> 
