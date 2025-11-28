@@ -96,6 +96,22 @@
       }
     }
   },
+  "Collection 2025": {
+    "description": "",
+    "extensions": {
+      "com.username.myapp": {
+        "id": "id-1764293405924-nzqhssbf9"
+      }
+    },
+    "My New Item": {
+      "description": "",
+      "extensions": {
+        "com.username.myapp": {
+          "id": "id-1764293433374-pz6m2gaqs"
+        }
+      }
+    }
+  },
   "Specific Tokens": {
     "description": "",
     "extensions": {
@@ -128,6 +144,14 @@
           "com.username.myapp": {
             "id": "id-1736607421623-pfla2396y"
           }
+        }
+      }
+    },
+    "Collection 2025": {
+      "description": "",
+      "extensions": {
+        "com.username.myapp": {
+          "id": "id-1764293405924-nzqhssbf9"
         }
       }
     }

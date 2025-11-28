@@ -454,6 +454,12 @@
       {/each}
     </section>
   </div>
+
+  <div class="sidebar-footer">
+    <button class="add-collection-button" onclick={openCreateModal}>
+      Add Collection
+    </button>
+  </div>
 </aside>
 
 {#if isCreateModalOpen}
@@ -498,6 +504,11 @@
   .sidebar-header {
     padding: var(--spacing-4);
     border-bottom: 1px solid var(--color-card-border);
+  }
+
+  .sidebar-footer {
+    padding: var(--spacing-4);
+    border-top: 1px solid var(--color-card-border);
   }
 
   .add-collection-button {

@@ -11,10 +11,10 @@ export const load: PageServerLoad = async ({ cookies, url, locals }) => {
   // Handle Strapi callback with tokens
   if (url.searchParams.has('access_token') && url.searchParams.has('jwt')) {
     console.log('Strapi callback detected with tokens');
-    
+
     const jwt = url.searchParams.get('jwt');
     const githubToken = url.searchParams.get('access_token');
-    
+
     if (!jwt || !githubToken) {
       console.error('Missing required tokens');
       return {
@@ -24,14 +24,14 @@ export const load: PageServerLoad = async ({ cookies, url, locals }) => {
     }
 
     console.log('Setting cookies...');
-    cookies.set('jwt', jwt, { 
+    cookies.set('jwt', jwt, {
       path: '/',
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax'
     });
-    
-    cookies.set('github_token', githubToken, {
+
+    cookies.set('github', githubToken, {
       path: '/',
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -58,4 +58,4 @@ export const load: PageServerLoad = async ({ cookies, url, locals }) => {
     error: null,
     isAuthenticated: locals.user?.isAuthenticated || false
   };
-}; 
+};
