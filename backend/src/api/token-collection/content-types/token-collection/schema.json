@@ -1,0 +1,40 @@
+{
+    "kind": "collectionType",
+    "collectionName": "token_collections",
+    "info": {
+        "singularName": "token-collection",
+        "pluralName": "token-collections",
+        "displayName": "Token Collection",
+        "description": "High-level groups like Color, Typography, Spacing"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "name": {
+            "type": "string",
+            "required": true
+        },
+        "key": {
+            "type": "string",
+            "required": true,
+            "unique": false
+        },
+        "description": {
+            "type": "text"
+        },
+        "design_system": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::design-system.design-system",
+            "inversedBy": "collections"
+        },
+        "tokens": {
+            "type": "relation",
+            "relation": "oneToMany",
+            "target": "api::token.token",
+            "mappedBy": "collection"
+        }
+    }
+}

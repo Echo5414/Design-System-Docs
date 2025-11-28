@@ -22,7 +22,15 @@ export default () => {
     if (ctx.url.startsWith('/api/connect/github/callback') && ctx.status === 302) {
       try {
         // Extract access token from the redirect URL
-        const redirectUrl = new URL(ctx.response.get('Location'));
+        const locationHeader = ctx.response.get('Location');
+        if (!locationHeader) {
+          console.log('No Location header found on GitHub callback response');
+          return;
+        }
+
+        // Strapi returns a relative URL; provide backend origin as base to avoid ERR_INVALID_URL
+        const backendOrigin = `${ctx.request.protocol}://${ctx.request.host}`;
+        const redirectUrl = new URL(locationHeader, backendOrigin);
         const access_token = redirectUrl.searchParams.get('access_token');
 
         if (!access_token) {
@@ -92,9 +100,19 @@ export default () => {
           id: user.id,
         });
 
-        // Update redirect URL with JWT
-        redirectUrl.searchParams.set('jwt', jwt);
-        ctx.set('Location', redirectUrl.toString());
+        // Build frontend redirect URL (preserve returnTo when present)
+        const frontendBase = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const returnToParam = ctx.query?.returnTo || redirectUrl.searchParams.get('returnTo');
+        const targetBase =
+          returnToParam && /^https?:\/\//.test(returnToParam)
+            ? returnToParam
+            : `${frontendBase}${returnToParam || ''}`;
+
+        const finalRedirect = new URL(targetBase);
+        finalRedirect.searchParams.set('access_token', access_token);
+        finalRedirect.searchParams.set('jwt', jwt);
+
+        ctx.set('Location', finalRedirect.toString());
       } catch (error) {
         console.error('GitHub callback middleware error:', error);
       }

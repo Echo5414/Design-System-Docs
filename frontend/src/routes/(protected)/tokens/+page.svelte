@@ -23,7 +23,9 @@
     on:save={() => {
       isOpen = false;
       // Refresh collections after save
-      collectionsStore.load();
+      collectionsStore.load().catch((error: Error) => {
+        console.error('Error reloading collections:', error);
+      });
     }}
   />
 </div> 

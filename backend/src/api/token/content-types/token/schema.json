@@ -1,0 +1,69 @@
+{
+    "kind": "collectionType",
+    "collectionName": "tokens",
+    "info": {
+        "singularName": "token",
+        "pluralName": "tokens",
+        "displayName": "Token",
+        "description": "Individual design tokens"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "name": {
+            "type": "string",
+            "required": true
+        },
+        "full_path": {
+            "type": "string",
+            "required": true
+        },
+        "group_path": {
+            "type": "string"
+        },
+        "value": {
+            "type": "json",
+            "required": true
+        },
+        "type": {
+            "type": "enumeration",
+            "enum": [
+                "color",
+                "dimension",
+                "fontFamily",
+                "fontWeight",
+                "duration",
+                "cubicBezier",
+                "number",
+                "strokeStyle",
+                "border",
+                "transition",
+                "shadow",
+                "gradient",
+                "typography"
+            ],
+            "required": true
+        },
+        "description": {
+            "type": "text"
+        },
+        "deprecated": {
+            "type": "boolean",
+            "default": false
+        },
+        "alias_to": {
+            "type": "string"
+        },
+        "extensions": {
+            "type": "json"
+        },
+        "collection": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::token-collection.token-collection",
+            "inversedBy": "tokens"
+        }
+    }
+}

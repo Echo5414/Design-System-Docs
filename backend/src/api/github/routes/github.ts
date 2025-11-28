@@ -12,5 +12,17 @@ export default {
         middlewares: [],
       },
     },
+    {
+      method: 'GET',
+      path: '/github/repos',
+      handler: 'github.listRepos',
+      config: {
+        auth: {
+          enabled: true,
+        },
+        policies: [],
+        middlewares: [],
+      },
+    },
   ],
-}; 
+};

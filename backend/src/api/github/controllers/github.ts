@@ -65,4 +65,57 @@ export default {
       return ctx.badRequest(error instanceof Error ? error.message : 'Unknown error');
     }
   },
+
+  async listRepos(ctx) {
+    try {
+      // Verify user is authenticated
+      if (!ctx.state.user) {
+        return ctx.unauthorized('You must be logged in');
+      }
+
+      // Get the GitHub token from request header or cookie
+      const githubToken = ctx.request.header['github-token'] ||
+        ctx.cookies.get('github') ||
+        ctx.cookies.get('github_token');
+
+      if (!githubToken) {
+        return ctx.unauthorized('No GitHub token provided');
+      }
+
+      // Fetch user's repositories from GitHub
+      const response = await fetch('https://api.github.com/user/repos?per_page=100&sort=updated', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${githubToken}`,
+          'Accept': 'application/vnd.github.v3+json',
+        },
+      });
+
+      const repos = await response.json() as any[];
+
+      if (!response.ok) {
+        return ctx.badRequest('Failed to fetch repositories');
+      }
+
+      // Return simplified repo data with owner and default_branch
+      const simplifiedRepos = repos.map((repo: any) => ({
+        id: repo.id,
+        name: repo.name,
+        full_name: repo.full_name,
+        html_url: repo.html_url,
+        description: repo.description,
+        private: repo.private,
+        updated_at: repo.updated_at,
+        owner: {
+          login: repo.owner.login
+        },
+        default_branch: repo.default_branch || 'main'
+      }));
+
+      return { data: simplifiedRepos };
+    } catch (error) {
+      console.error('List repos error:', error);
+      return ctx.badRequest(error instanceof Error ? error.message : 'Unknown error');
+    }
+  },
 };

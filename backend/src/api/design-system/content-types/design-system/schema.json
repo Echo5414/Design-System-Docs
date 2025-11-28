@@ -1,0 +1,59 @@
+{
+    "kind": "collectionType",
+    "collectionName": "design_systems",
+    "info": {
+        "singularName": "design-system",
+        "pluralName": "design-systems",
+        "displayName": "Design System",
+        "description": "Stores configuration for a design system connected to a GitHub repository"
+    },
+    "options": {
+        "draftAndPublish": false
+    },
+    "pluginOptions": {},
+    "attributes": {
+        "name": {
+            "type": "string",
+            "required": true
+        },
+        "slug": {
+            "type": "uid",
+            "targetField": "name",
+            "required": true
+        },
+        "repo_owner": {
+            "type": "string",
+            "required": true
+        },
+        "repo_name": {
+            "type": "string",
+            "required": true
+        },
+        "branch": {
+            "type": "string",
+            "default": "main"
+        },
+        "tokens_path": {
+            "type": "string",
+            "default": "tokens/"
+        },
+        "resolver_path": {
+            "type": "string"
+        },
+        "last_published_commit_sha": {
+            "type": "string"
+        },
+        "last_published_at": {
+            "type": "datetime"
+        },
+        "last_synced_at": {
+            "type": "datetime"
+        },
+        "collections": {
+            "type": "relation",
+            "relation": "oneToMany",
+            "target": "api::token-collection.token-collection",
+            "mappedBy": "design_system"
+        }
+    }
+}

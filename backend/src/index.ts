@@ -21,7 +21,7 @@ export default {
 
     grantConfig.github.enabled = true;
     grantConfig.github.key = process.env.GITHUB_CLIENT_ID || 'myDefaultKey';
-    grantConfig.github.secret = process.env.GITHUB_CLIENT_SECRET || 'myDefaultSecret';
+    grantConfig.github.secret = process.env.GITHUB_CLIENT_SECRET || 'myDefault Secret';
     grantConfig.github.callbackUrl = 'api/auth/github/callback';
     grantConfig.github.redirectUri = 'http://localhost:1337/api/connect/github/callback';
     grantConfig.github.scope = ['repo', 'user', 'user:email'];
@@ -37,24 +37,43 @@ export default {
       });
 
       if (authenticatedRole) {
-        const permissionAction = 'api::github.github.createRepo';
-        const existingPermission = await strapi.db.query('plugin::users-permissions.permission').findOne({
-          where: {
-            action: permissionAction,
-            role: authenticatedRole.id
-          }
-        });
+        const permissions = [
+          'api::github.github.createRepo',
+          'api::github.github.listRepos',
+          'api::design-system.design-system.connect',
+          'api::design-system.design-system.find',
+          'api::design-system.design-system.findOne',
+          'api::token-collection.token-collection.find',
+          'api::token-collection.token-collection.findOne',
+          'api::token-collection.token-collection.create',
+          'api::token-collection.token-collection.update',
+          'api::token-collection.token-collection.delete',
+          'api::token.token.find',
+          'api::token.token.findOne',
+          'api::token.token.create',
+          'api::token.token.update',
+          'api::token.token.delete'
+        ];
 
-        if (!existingPermission) {
-          await strapi.db.query('plugin::users-permissions.permission').create({
-            data: {
+        for (const permissionAction of permissions) {
+          const existingPermission = await strapi.db.query('plugin::users-permissions.permission').findOne({
+            where: {
               action: permissionAction,
               role: authenticatedRole.id
             }
           });
-          strapi.log.info(`> Granted ${permissionAction} permission to Authenticated role`);
-        } else {
-          strapi.log.info(`> Permission ${permissionAction} already exists for Authenticated role`);
+
+          if (!existingPermission) {
+            await strapi.db.query('plugin::users-permissions.permission').create({
+              data: {
+                action: permissionAction,
+                role: authenticatedRole.id
+              }
+            });
+            strapi.log.info(`> Granted ${permissionAction} permission to Authenticated role`);
+          } else {
+            strapi.log.info(`> Permission ${permissionAction} already exists for Authenticated role`);
+          }
         }
       }
     } catch (error) {
@@ -68,22 +87,41 @@ export default {
 
       const authRole = roles.find(r => r.type === 'authenticated');
       if (authRole) {
-        const permissionAction = 'api::github.github.createRepo';
-        const existingPermission = await strapi.db.query('plugin::users-permissions.permission').findOne({
-          where: {
-            action: permissionAction,
-            role: authRole.id
-          }
-        });
+        const permissions = [
+          'api::github.github.createRepo',
+          'api::github.github.listRepos',
+          'api::design-system.design-system.connect',
+          'api::design-system.design-system.find',
+          'api::design-system.design-system.findOne',
+          'api::token-collection.token-collection.find',
+          'api::token-collection.token-collection.findOne',
+          'api::token-collection.token-collection.create',
+          'api::token-collection.token-collection.update',
+          'api::token-collection.token-collection.delete',
+          'api::token.token.find',
+          'api::token.token.findOne',
+          'api::token.token.create',
+          'api::token.token.update',
+          'api::token.token.delete'
+        ];
 
-        if (!existingPermission) {
-          await strapi.db.query('plugin::users-permissions.permission').create({
-            data: {
+        for (const permissionAction of permissions) {
+          const existingPermission = await strapi.db.query('plugin::users-permissions.permission').findOne({
+            where: {
               action: permissionAction,
               role: authRole.id
             }
           });
-          strapi.log.info(`> RETRY: Granted ${permissionAction} permission to Authenticated role`);
+
+          if (!existingPermission) {
+            await strapi.db.query('plugin::users-permissions.permission').create({
+              data: {
+                action: permissionAction,
+                role: authRole.id
+              }
+            });
+            strapi.log.info(`> RETRY: Granted ${permissionAction} permission to Authenticated role`);
+          }
         }
       }
     } catch (e) {

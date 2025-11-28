@@ -369,6 +369,142 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiDesignSystemDesignSystem
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'design_systems';
+  info: {
+    description: 'Stores configuration for a design system connected to a GitHub repository';
+    displayName: 'Design System';
+    pluralName: 'design-systems';
+    singularName: 'design-system';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    branch: Schema.Attribute.String & Schema.Attribute.DefaultTo<'main'>;
+    collections: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::token-collection.token-collection'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    last_published_at: Schema.Attribute.DateTime;
+    last_published_commit_sha: Schema.Attribute.String;
+    last_synced_at: Schema.Attribute.DateTime;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::design-system.design-system'
+    > &
+      Schema.Attribute.Private;
+    name: Schema.Attribute.String & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    repo_name: Schema.Attribute.String & Schema.Attribute.Required;
+    repo_owner: Schema.Attribute.String & Schema.Attribute.Required;
+    resolver_path: Schema.Attribute.String;
+    slug: Schema.Attribute.UID<'name'> & Schema.Attribute.Required;
+    tokens_path: Schema.Attribute.String &
+      Schema.Attribute.DefaultTo<'tokens/'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiTokenCollectionTokenCollection
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'token_collections';
+  info: {
+    description: 'High-level groups like Color, Typography, Spacing';
+    displayName: 'Token Collection';
+    pluralName: 'token-collections';
+    singularName: 'token-collection';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    description: Schema.Attribute.Text;
+    design_system: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::design-system.design-system'
+    >;
+    key: Schema.Attribute.String & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::token-collection.token-collection'
+    > &
+      Schema.Attribute.Private;
+    name: Schema.Attribute.String & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    tokens: Schema.Attribute.Relation<'oneToMany', 'api::token.token'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiTokenToken extends Struct.CollectionTypeSchema {
+  collectionName: 'tokens';
+  info: {
+    description: 'Individual design tokens';
+    displayName: 'Token';
+    pluralName: 'tokens';
+    singularName: 'token';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    alias_to: Schema.Attribute.String;
+    collection: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::token-collection.token-collection'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    deprecated: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    description: Schema.Attribute.Text;
+    extensions: Schema.Attribute.JSON;
+    full_path: Schema.Attribute.String & Schema.Attribute.Required;
+    group_path: Schema.Attribute.String;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'api::token.token'> &
+      Schema.Attribute.Private;
+    name: Schema.Attribute.String & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    type: Schema.Attribute.Enumeration<
+      [
+        'color',
+        'dimension',
+        'fontFamily',
+        'fontWeight',
+        'duration',
+        'cubicBezier',
+        'number',
+        'strokeStyle',
+        'border',
+        'transition',
+        'shadow',
+        'gradient',
+        'typography',
+      ]
+    > &
+      Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    value: Schema.Attribute.JSON & Schema.Attribute.Required;
+  };
+}
+
 export interface PluginContentReleasesRelease
   extends Struct.CollectionTypeSchema {
   collectionName: 'strapi_releases';
@@ -877,6 +1013,9 @@ declare module '@strapi/strapi' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
+      'api::design-system.design-system': ApiDesignSystemDesignSystem;
+      'api::token-collection.token-collection': ApiTokenCollectionTokenCollection;
+      'api::token.token': ApiTokenToken;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;

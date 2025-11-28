@@ -22,6 +22,16 @@
             "id": "id-1736505293470-kpcd0rh1d"
           }
         }
+      },
+      "French": {
+        "value": "#79a220",
+        "type": "color",
+        "description": "fare",
+        "extensions": {
+          "com.username.myapp": {
+            "id": "id-1764348350392-66tybu5a2"
+          }
+        }
       }
     },
     "Dimensions": {
@@ -93,6 +103,26 @@
             "id": "id-4736505293470-kpcd0rh1d"
           }
         }
+      },
+      "Secondary500": {
+        "value": "#7a7171",
+        "type": "color",
+        "description": "new secondary\n",
+        "extensions": {
+          "com.username.myapp": {
+            "id": "id-1764347067803-2pmx4s1so"
+          }
+        }
+      },
+      "Error500": {
+        "value": "#eb1414",
+        "type": "color",
+        "description": "error",
+        "extensions": {
+          "com.username.myapp": {
+            "id": "id-1764348283046-rxmg3cqq4"
+          }
+        }
       }
     }
   },
@@ -152,6 +182,61 @@
       "extensions": {
         "com.username.myapp": {
           "id": "id-1764293405924-nzqhssbf9"
+        }
+      }
+    }
+  },
+  "New Collection For Me": {
+    "description": "",
+    "extensions": {
+      "com.username.myapp": {
+        "id": "id-1764345459804-b7gmayjyz"
+      }
+    },
+    "My New Item": {
+      "description": "",
+      "extensions": {
+        "com.username.myapp": {
+          "id": "id-1764345463682-1syzcna5k"
+        }
+      },
+      "emerald": {
+        "value": "#25b672",
+        "type": "color",
+        "description": "new",
+        "extensions": {
+          "com.username.myapp": {
+            "id": "id-1764345482241-u6k7lyxig"
+          }
+        }
+      },
+      "tes232": {
+        "value": {
+          "value": 32,
+          "unit": "px"
+        },
+        "type": "dimension",
+        "description": "test",
+        "extensions": {
+          "com.username.myapp": {
+            "id": "id-1764346412136-035g7if18"
+          }
+        }
+      }
+    }
+  },
+  "CreatedCollection": {
+    "description": "",
+    "extensions": {
+      "com.username.myapp": {
+        "id": "id-1764349764099-b24cq846z"
+      }
+    },
+    "NewCreatedItem": {
+      "description": "",
+      "extensions": {
+        "com.username.myapp": {
+          "id": "id-1764349768439-4wokzt9ql"
         }
       }
     }

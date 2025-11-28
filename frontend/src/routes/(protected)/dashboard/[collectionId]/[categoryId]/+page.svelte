@@ -18,9 +18,10 @@
   onMount(async () => {
     try {
       await collectionsStore.load();
-      isLoading = false;
     } catch (error) {
       console.error('Error loading collections:', error);
+    } finally {
+      isLoading = false;
     }
   });
 
