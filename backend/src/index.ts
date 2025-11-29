@@ -48,6 +48,11 @@ export default {
           'api::token-collection.token-collection.create',
           'api::token-collection.token-collection.update',
           'api::token-collection.token-collection.delete',
+          'api::token-group.token-group.find',
+          'api::token-group.token-group.findOne',
+          'api::token-group.token-group.create',
+          'api::token-group.token-group.update',
+          'api::token-group.token-group.delete',
           'api::token.token.find',
           'api::token.token.findOne',
           'api::token.token.create',
@@ -98,6 +103,11 @@ export default {
           'api::token-collection.token-collection.create',
           'api::token-collection.token-collection.update',
           'api::token-collection.token-collection.delete',
+          'api::token-group.token-group.find',
+          'api::token-group.token-group.findOne',
+          'api::token-group.token-group.create',
+          'api::token-group.token-group.update',
+          'api::token-group.token-group.delete',
           'api::token.token.find',
           'api::token.token.findOne',
           'api::token.token.create',
@@ -126,6 +136,58 @@ export default {
       }
     } catch (e) {
       strapi.log.error('> Error listing roles:', e);
+    }
+
+    // Migration: move tokens with group_path into token groups (one-time best effort)
+    try {
+      const tokensWithGroupPath = await strapi.db.query('api::token.token').findMany({
+        where: {
+          group_path: {
+            $notNull: true,
+          },
+          group: null,
+        },
+        populate: ['collection'],
+      });
+
+      const slugify = (value: string) =>
+        value
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '') || 'group';
+
+      for (const token of tokensWithGroupPath) {
+        const groupName = token.group_path?.trim();
+        if (!groupName || !token.collection) continue;
+
+        // Check if group already exists for this collection
+        let group = await strapi.db.query('api::token-group.token-group').findOne({
+          where: {
+            name: groupName,
+            collection: token.collection.id,
+          },
+        });
+
+        if (!group) {
+          group = await strapi.entityService.create('api::token-group.token-group', {
+            data: {
+              name: groupName,
+              slug: slugify(groupName),
+              collection: token.collection.id,
+            },
+          });
+          strapi.log.info(
+            `> Migration: created token-group "${groupName}" for collection ${token.collection.id}`
+          );
+        }
+
+        await strapi.db.query('api::token.token').update({
+          where: { id: token.id },
+          data: { group: group.id },
+        });
+      }
+    } catch (err) {
+      strapi.log.error('> Migration (group_path -> token-group) failed:', err);
     }
   },
 };
