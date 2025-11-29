@@ -2,6 +2,7 @@ const STRAPI_URL = 'http://localhost:1337';
 
 type DesignSystemFetchOptions = {
     includeTokens?: boolean;
+    includeGroups?: boolean;
 };
 
 export async function strapiFetch(endpoint: string, options: RequestInit = {}) {
@@ -27,12 +28,16 @@ export async function strapiFetch(endpoint: string, options: RequestInit = {}) {
 
 function buildPopulateQuery(options?: DesignSystemFetchOptions) {
     const params = new URLSearchParams();
-    if (options?.includeTokens) {
-        // Explicitly define the fields to populate to avoid circular issues
-        params.append('populate[collections][populate]', 'tokens');
-    } else {
-        params.append('populate', 'collections');
+    params.append('populate', 'collections');
+
+    if (options?.includeGroups) {
+        params.append('populate[collections][populate][groups]', '*');
     }
+
+    if (options?.includeTokens) {
+        params.append('populate[collections][populate][tokens][populate]', 'group');
+    }
+
     return params.toString();
 }
 
@@ -103,25 +108,25 @@ export async function getActiveDesignSystem(options?: DesignSystemFetchOptions) 
 }
 
 // Collections
-export async function getCollection(id: number) {
-    return strapiFetch(`/api/token-collections/${id}?populate=tokens`);
+export async function getCollection(id: number | string) {
+    return strapiFetch(`/api/token-collections/${id}?populate=groups,tokens`);
 }
 
-export async function createCollection(data: { name: string; key: string; description?: string; design_system: number }) {
+export async function createCollection(data: { name: string; key: string; description?: string; design_system: number | string }) {
     return strapiFetch('/api/token-collections', {
         method: 'POST',
         body: JSON.stringify({ data })
     });
 }
 
-export async function updateCollection(id: number, data: { name?: string; key?: string; description?: string }) {
+export async function updateCollection(id: number | string, data: { name?: string; key?: string; description?: string }) {
     return strapiFetch(`/api/token-collections/${id}`, {
         method: 'PUT',
         body: JSON.stringify({ data })
     });
 }
 
-export async function deleteCollection(id: number) {
+export async function deleteCollection(id: number | string) {
     return strapiFetch(`/api/token-collections/${id}`, {
         method: 'DELETE'
     });
@@ -137,8 +142,9 @@ export async function createToken(data: {
     full_path: string;
     value: any;
     type: string;
-    collection: number;
-    group_path?: string;
+    collection: number | string;
+    group?: number | string | null;
+    group_path?: string | null;
     description?: string;
     deprecated?: boolean;
     alias_to?: string;
@@ -150,7 +156,7 @@ export async function createToken(data: {
     });
 }
 
-export async function updateToken(id: number, data: any) {
+export async function updateToken(id: number | string, data: any) {
     return strapiFetch(`/api/tokens/${id}`, {
         method: 'PUT',
         body: JSON.stringify({ data })
@@ -163,13 +169,47 @@ export async function deleteToken(id: number) {
     });
 }
 
-export async function getCollectionsByDesignSystem(designSystemId: number, options?: { includeTokens?: boolean }) {
+export async function getCollectionsByDesignSystem(
+    designSystemId: number | string,
+    options?: { includeTokens?: boolean; includeGroups?: boolean }
+) {
     const params = new URLSearchParams();
     params.append('filters[design_system][id][$eq]', String(designSystemId));
 
+    // Always include groups so we can render empty groups
+    params.append('populate[groups]', '*');
+
     if (options?.includeTokens) {
-        params.append('populate', 'tokens');
+        params.append('populate[tokens][populate]', 'group');
     }
 
     return strapiFetch(`/api/token-collections?${params.toString()}`);
+}
+
+export async function getGroupsByDesignSystem(designSystemId: number | string) {
+    const params = new URLSearchParams();
+    params.append('filters[collection][design_system][id][$eq]', String(designSystemId));
+    params.append('populate', 'collection');
+    return strapiFetch(`/api/token-groups?${params.toString()}`);
+}
+
+// Token Groups
+export async function createGroup(data: { name: string; slug?: string; description?: string; order?: number; collection: number | string }) {
+    return strapiFetch('/api/token-groups', {
+        method: 'POST',
+        body: JSON.stringify({ data })
+    });
+}
+
+export async function updateGroup(id: number | string, data: { name?: string; slug?: string; description?: string; order?: number }) {
+    return strapiFetch(`/api/token-groups/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ data })
+    });
+}
+
+export async function deleteGroup(id: number | string) {
+    return strapiFetch(`/api/token-groups/${id}`, {
+        method: 'DELETE'
+    });
 }

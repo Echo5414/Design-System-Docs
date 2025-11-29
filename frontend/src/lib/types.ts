@@ -12,6 +12,7 @@ interface BaseItem {
 
 // Token interface with all properties
 export interface TokenItem extends BaseItem {
+  documentId?: string;
   type: TokenType;
   value: TokenValueType;
   createdAt?: string;

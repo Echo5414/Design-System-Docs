@@ -10,7 +10,8 @@
   import type { TokenItem } from '$lib/types';
   import { onMount } from 'svelte';
 
-  let tokens: TokenItem[] = [];
+  let groups: { name: string; tokens: TokenItem[] }[] = [];
+  let ungrouped: TokenItem[] = [];
   let pageTitle = '';
   let pageDescription = '';
   let isLoading = true;
@@ -30,7 +31,10 @@
     if (collection) {
       pageTitle = collection.name;
       pageDescription = collection.description || '';
-      tokens = collection.items.flatMap(item => item.items || []);
+      ungrouped = (collection.items.find(i => i.id.endsWith('-ungrouped'))?.items) || [];
+      groups = collection.items
+        .filter(i => !i.id.endsWith('-ungrouped'))
+        .map(i => ({ name: i.name, tokens: i.items || [] }));
     }
   }
 </script>
@@ -45,7 +49,23 @@
       {#if isLoading}
         <div class="loading">Loading collections...</div>
       {:else}
-        <TokenTable {tokens} title={pageTitle} description={pageDescription} />
+        {#if ungrouped.length}
+          <TokenTable
+            tokens={ungrouped}
+            title={`${pageTitle} / Ungrouped`}
+            description={pageDescription}
+            collectionId={$page.params.collectionId}
+          />
+        {/if}
+        {#each groups as group}
+          <TokenTable
+            tokens={group.tokens}
+            title={`${pageTitle} / ${group.name}`}
+            description={pageDescription}
+            collectionId={$page.params.collectionId}
+            groupLabel={group.name}
+          />
+        {/each}
       {/if}
     </main>
   </div>

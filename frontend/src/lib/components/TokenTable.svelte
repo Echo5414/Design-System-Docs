@@ -6,6 +6,8 @@
   export let tokens: Token[] = [];
   export let title: string = '';
   export let description: string = '';
+  export let collectionId: string | undefined = undefined;
+  export let groupLabel: string | undefined = undefined;
 
   let isModalOpen = false;
 
@@ -43,7 +45,7 @@
         <h2>{title}</h2>
         <p class="description">{description}</p>
       </div>
-      {#if $page.params.collectionId && $page.params.categoryId}
+      {#if collectionId}
         <button class="add-button" on:click={openModal}>
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 5v14M5 12h14"/>
@@ -107,11 +109,12 @@
   </div>
 </div>
 
-{#if isModalOpen && $page.params.collectionId && $page.params.categoryId}
+{#if isModalOpen && collectionId}
   <TokenModal
     isOpen={isModalOpen}
-    collectionId={$page.params.collectionId}
+    collectionId={collectionId}
     categoryId={$page.params.categoryId}
+    initialGroupLabel={groupLabel || ''}
     on:close={closeModal}
     on:save={closeModal}
   />

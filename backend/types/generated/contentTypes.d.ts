@@ -434,6 +434,10 @@ export interface ApiTokenCollectionTokenCollection
       'manyToOne',
       'api::design-system.design-system'
     >;
+    groups: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::token-group.token-group'
+    >;
     key: Schema.Attribute.String & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
@@ -443,6 +447,43 @@ export interface ApiTokenCollectionTokenCollection
       Schema.Attribute.Private;
     name: Schema.Attribute.String & Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
+    tokens: Schema.Attribute.Relation<'oneToMany', 'api::token.token'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiTokenGroupTokenGroup extends Struct.CollectionTypeSchema {
+  collectionName: 'token_groups';
+  info: {
+    description: 'Grouping for tokens within a collection';
+    displayName: 'Token Group';
+    pluralName: 'token-groups';
+    singularName: 'token-group';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    collection: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::token-collection.token-collection'
+    >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    description: Schema.Attribute.Text;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::token-group.token-group'
+    > &
+      Schema.Attribute.Private;
+    name: Schema.Attribute.String & Schema.Attribute.Required;
+    order: Schema.Attribute.Integer;
+    publishedAt: Schema.Attribute.DateTime;
+    slug: Schema.Attribute.UID<'name'> & Schema.Attribute.Required;
     tokens: Schema.Attribute.Relation<'oneToMany', 'api::token.token'>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -474,6 +515,10 @@ export interface ApiTokenToken extends Struct.CollectionTypeSchema {
     description: Schema.Attribute.Text;
     extensions: Schema.Attribute.JSON;
     full_path: Schema.Attribute.String & Schema.Attribute.Required;
+    group: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::token-group.token-group'
+    >;
     group_path: Schema.Attribute.String;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::token.token'> &
@@ -1015,6 +1060,7 @@ declare module '@strapi/strapi' {
       'admin::user': AdminUser;
       'api::design-system.design-system': ApiDesignSystemDesignSystem;
       'api::token-collection.token-collection': ApiTokenCollectionTokenCollection;
+      'api::token-group.token-group': ApiTokenGroupTokenGroup;
       'api::token.token': ApiTokenToken;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;

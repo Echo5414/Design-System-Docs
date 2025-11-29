@@ -30,6 +30,12 @@
             "target": "api::design-system.design-system",
             "inversedBy": "collections"
         },
+        "groups": {
+            "type": "relation",
+            "relation": "oneToMany",
+            "target": "api::token-group.token-group",
+            "mappedBy": "collection"
+        },
         "tokens": {
             "type": "relation",
             "relation": "oneToMany",

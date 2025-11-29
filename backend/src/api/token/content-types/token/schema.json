@@ -23,6 +23,12 @@
         "group_path": {
             "type": "string"
         },
+        "group": {
+            "type": "relation",
+            "relation": "manyToOne",
+            "target": "api::token-group.token-group",
+            "inversedBy": "tokens"
+        },
         "value": {
             "type": "json",
             "required": true

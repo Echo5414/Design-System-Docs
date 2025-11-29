@@ -1,0 +1,43 @@
+{
+  "kind": "collectionType",
+  "collectionName": "token_groups",
+  "info": {
+    "singularName": "token-group",
+    "pluralName": "token-groups",
+    "displayName": "Token Group",
+    "description": "Grouping for tokens within a collection"
+  },
+    "options": {
+        "draftAndPublish": false
+    },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true
+    },
+    "slug": {
+      "type": "uid",
+      "targetField": "name",
+      "required": true
+    },
+    "description": {
+      "type": "text"
+    },
+    "order": {
+      "type": "integer"
+    },
+    "collection": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::token-collection.token-collection",
+      "inversedBy": "groups"
+    },
+    "tokens": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::token.token",
+      "mappedBy": "group"
+    }
+  }
+}

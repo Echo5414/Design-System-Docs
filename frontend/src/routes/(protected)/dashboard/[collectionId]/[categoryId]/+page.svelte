@@ -48,7 +48,13 @@
       {#if isLoading}
         <div class="loading">Loading collections...</div>
       {:else}
-        <TokenTable {tokens} title={pageTitle} description={pageDescription} />
+        <TokenTable
+          {tokens}
+          title={pageTitle}
+          description={pageDescription}
+          collectionId={$page.params.collectionId}
+          groupLabel={pageTitle.split('/').pop()?.trim()}
+        />
       {/if}
     </main>
   </div>

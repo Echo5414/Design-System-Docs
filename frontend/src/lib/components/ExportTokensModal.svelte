@@ -11,15 +11,24 @@
 		const tokens: any = {};
 
 		collections.forEach((collection: Collection) => {
+			const collectionKey = collection.name;
+			if (!tokens[collectionKey]) tokens[collectionKey] = {};
+
 			collection.items.forEach((category: any) => {
 				if (!category.items) return;
 
-				category.items.forEach((token: any) => {
-					// Create nested structure based on token path
-					const pathParts = token.name.split('.');
-					let current = tokens;
+				// Use group name as a nesting level when provided; otherwise place tokens at collection root.
+				const groupName = category.name;
+				const targetRoot =
+					groupName && groupName !== 'Ungrouped'
+						? (tokens[collectionKey][groupName] = tokens[collectionKey][groupName] || {})
+						: tokens[collectionKey];
 
-					// Navigate/create the path
+				category.items.forEach((token: any) => {
+					// Create nested structure based on token name segments
+					const pathParts = token.name.split('.');
+					let current = targetRoot;
+
 					for (let i = 0; i < pathParts.length - 1; i++) {
 						if (!current[pathParts[i]]) {
 							current[pathParts[i]] = {};
@@ -27,7 +36,6 @@
 						current = current[pathParts[i]];
 					}
 
-					// Set the final token with W3C format
 					const tokenName = pathParts[pathParts.length - 1];
 					current[tokenName] = {
 						$type: token.type,
@@ -56,12 +64,19 @@
 </script>
 
 {#if isOpen}
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
 		class="modal-overlay"
-		onclick={handleClose}
 		role="button"
 		tabindex="0"
-		onkeydown={(e) => e.key === 'Escape' && handleClose()}
+		aria-label="Close modal"
+		onclick={handleClose}
+		onkeydown={(e) => {
+			if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				handleClose();
+			}
+		}}
 	>
 		<div
 			class="modal"
@@ -109,6 +124,10 @@
 		z-index: 9999;
 		backdrop-filter: blur(4px);
 		cursor: pointer;
+		border: none;
+		padding: 0;
+		margin: 0;
+		background: transparent;
 	}
 
 	.modal {

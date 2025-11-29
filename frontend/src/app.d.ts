@@ -78,6 +78,7 @@ declare module '$lib/types' {
 
 	export interface TokenItem {
 		id: string;
+		documentId?: string;
 		name: string;
 		type: TokenType;
 		value: TokenValueType;

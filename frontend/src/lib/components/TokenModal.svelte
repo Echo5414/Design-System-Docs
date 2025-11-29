@@ -1,15 +1,19 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import type { TokenType, TokenValueType } from '$lib/types';
-	import {
-		createToken,
-		getActiveDesignSystem,
-		getCollectionsByDesignSystem
-	} from '$lib/api/strapi';
-	import { browser } from '$app/environment';
-	import { collectionsStore } from '$lib/stores/collections';
+import {
+	createToken,
+	getActiveDesignSystem
+} from '$lib/api/strapi';
+import { browser } from '$app/environment';
+import { collectionsStore } from '$lib/stores/collections';
 
-	let { isOpen = $bindable(false), collectionId = '', categoryId = '' } = $props();
+let {
+	isOpen = $bindable(false),
+	collectionId = '',
+	categoryId = '',
+	initialGroupLabel = ''
+} = $props();
 
 	const dispatch = createEventDispatcher<{
 		close: void;
@@ -18,11 +22,13 @@
 
 	let tokenName = $state('');
 	let tokenType = $state<TokenType>('color');
-	let tokenValue = $state('');
-	let tokenDescription = $state('');
-	let selectedCollectionId = $state<number | null>(null);
-	let collections = $state<any[]>([]);
-	let isLoadingCollections = $state(false);
+let tokenValue = $state('');
+let tokenDescription = $state('');
+let selectedCollectionId = $state<string | null>(null);
+let selectedGroupId = $state<string | null>(null);
+let collections = $state<any[]>([]);
+let isLoadingCollections = $state(false);
+let groupInput = $state('');
 
 	// Additional fields for typography
 	let fontFamily = $state('');
@@ -36,25 +42,44 @@
 		if (isOpen && browser && collections.length === 0) {
 			fetchCollections();
 		}
+		if (isOpen) {
+			groupInput = initialGroupLabel || '';
+		}
 	});
 
 	async function fetchCollections() {
 		isLoadingCollections = true;
 		try {
-			const activeDS = await getActiveDesignSystem();
-			const response = await getCollectionsByDesignSystem(activeDS.id);
-
-			// Strapi 5: response.data is an array of items directly
-			if (response.data && Array.isArray(response.data)) {
-				collections = response.data.map((c: any) => ({
-					id: c.id,
-					name: c.name,
-					key: c.key
-				}));
+			// Ensure store has data
+			if (!$collectionsStore.length) {
+				await collectionsStore.load();
 			}
 
+			collections = $collectionsStore.map((c) => ({
+				id: c.id,
+				name: c.name,
+				key: c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+				groups: (c.items || [])
+					.filter((item) => item.id && !item.id.endsWith('-ungrouped'))
+					.map((g) => ({
+						id: g.id,
+						name: g.name
+					}))
+			}));
+
 			if (collections.length > 0) {
-				selectedCollectionId = collections[0].id;
+				const match = collections.find((c) => c.id === String(collectionId));
+				selectedCollectionId = match?.id ?? collections[0].id;
+				if (categoryId && !categoryId.endsWith('-ungrouped')) {
+					selectedGroupId = String(categoryId);
+					const col = collections.find((c) => c.id === selectedCollectionId);
+					const existing = col?.groups?.find((g: any) => g.id === selectedGroupId);
+					if (existing) {
+						groupInput = existing.name;
+					}
+				} else {
+					selectedGroupId = null;
+				}
 			}
 		} catch (error) {
 			console.error('Failed to load collections:', error);
@@ -72,12 +97,14 @@
 		tokenName = '';
 		tokenType = 'color';
 		tokenValue = '';
-		tokenDescription = '';
-		fontFamily = '';
-		fontSize = '';
-		fontWeight = 400;
-		lineHeight = '';
-		letterSpacing = '';
+	tokenDescription = '';
+	groupInput = '';
+	selectedGroupId = null;
+	fontFamily = '';
+	fontSize = '';
+	fontWeight = 400;
+	lineHeight = '';
+	letterSpacing = '';
 	}
 
 	function parseTokenValue(type: TokenType, value: string): TokenValueType {
@@ -118,7 +145,8 @@
 			await createToken({
 				name: tokenName,
 				full_path: fullPath,
-				group_path: categoryId || 'default',
+				group: selectedGroupId,
+				group_path: groupInput.trim() || null,
 				type: tokenType,
 				value: parseTokenValue(tokenType, tokenValue),
 				description: tokenDescription,
@@ -181,6 +209,33 @@
 					</select>
 				</div>
 
+				<div class="form-group">
+					<label for="groupPath">Group (optional)</label>
+					<select
+						id="groupPath"
+						bind:value={selectedGroupId}
+						onchange={(e) => {
+							const sel = (e.target as HTMLSelectElement).value;
+							selectedGroupId = sel || null;
+							if (sel) {
+								const col = collections.find((c) => c.id === selectedCollectionId);
+								const label = col?.groups?.find((g: any) => g.id === sel)?.name || '';
+								groupInput = label;
+							} else {
+								groupInput = '';
+							}
+						}}
+					>
+						<option value=''>Ungrouped</option>
+						{#if collections.length}
+							{#each (collections.find((c) => c.id === selectedCollectionId)?.groups || []) as group}
+								<option value={group.id}>{group.name}</option>
+							{/each}
+						{/if}
+					</select>
+					<p class="help-text">Select a group or leave ungrouped.</p>
+				</div>
+
 				{#if tokenType === 'typography'}
 					<div class="form-group">
 						<label for="fontFamily">Font Family</label>
@@ -217,17 +272,26 @@
 				{:else}
 					<div class="form-group">
 						<label for="tokenValue">Value *</label>
-						<input
-							type={tokenType === 'color' ? 'color' : 'text'}
-							id="tokenValue"
-							bind:value={tokenValue}
-							required
-							placeholder={tokenType === 'color'
-								? '#000000'
-								: tokenType === 'dimension'
-									? '16px'
-									: ''}
-						/>
+						<div class="value-row">
+							<input
+								type={tokenType === 'color' ? 'color' : 'text'}
+								id="tokenValue"
+								bind:value={tokenValue}
+								required
+								placeholder={tokenType === 'color'
+									? '#000000'
+									: tokenType === 'dimension'
+										? '16px'
+										: ''}
+							/>
+							{#if tokenType === 'color'}
+								<div
+									class="color-swatch"
+									style={`background:${tokenValue || '#000000'}`}
+									aria-label="Color preview"
+								></div>
+							{/if}
+						</div>
 					</div>
 				{/if}
 
@@ -393,5 +457,22 @@
 	.save-button:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	.value-row {
+		display: flex;
+		align-items: center;
+		gap: var(--spacing-2);
+	}
+
+	.value-row input {
+		flex: 1;
+	}
+
+	.color-swatch {
+		width: 32px;
+		height: 32px;
+		border: 1px solid var(--color-card-border);
+		border-radius: var(--radius-sm);
 	}
 </style>

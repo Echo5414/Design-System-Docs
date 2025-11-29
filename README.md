@@ -211,7 +211,7 @@ This project follows the official W3C Design Tokens specification:
 ### Example W3C Token Structure
 ```json
 {
-  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$schema": "https://www.designtokens.org/technical-reports/",
   "color": {
     "brand": {
       "primary": {

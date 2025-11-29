@@ -82,6 +82,24 @@
 		newCollectionName = '';
 	}
 
+	async function createNewCollection() {
+		const name = newCollectionName.trim();
+		if (!name) return;
+		try {
+			await collectionsStore.createCollection(name);
+			closeCreateModal();
+		} catch (error) {
+			console.error('Failed to create collection:', error);
+		}
+	}
+
+	function handleCreateKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			createNewCollection();
+		}
+	}
+
 	function handleModalClick(event: MouseEvent) {
 		// Only close if clicking the backdrop (dialog element itself)
 		if (event.target === modalElement) {
@@ -176,13 +194,44 @@
 	}
 
 	async function saveItemName(collectionId: string, itemId: string, event: Event) {
-		// Item renaming not implemented for Strapi yet
-		editingItemId = null;
+		const input = event.target as HTMLInputElement;
+		const newName = input.value.trim();
+
+		if (!newName) {
+			editingItemId = null;
+			return;
+		}
+
+		try {
+			// Ungrouped bucket should not be renamed
+			if (itemId.endsWith('-ungrouped')) {
+				editingItemId = null;
+				return;
+			}
+
+			await collectionsStore.renameGroup(itemId, newName);
+		} catch (error) {
+			console.error('Failed to rename group:', error);
+		} finally {
+			editingItemId = null;
+		}
 	}
 
 	async function addNewItem(collectionId: string) {
-		console.warn('Adding empty groups is not supported yet.');
-		activeDropdown = null;
+		const name = window.prompt('Group name?')?.trim();
+		if (!name) {
+			activeDropdown = null;
+			return;
+		}
+
+		try {
+			await collectionsStore.createGroup(collectionId, name);
+			await collectionsStore.load();
+		} catch (error) {
+			console.error('Failed to create group:', error);
+		} finally {
+			activeDropdown = null;
+		}
 	}
 
 	async function deleteCollection(id: string) {
@@ -293,7 +342,7 @@
 						{#if activeDropdown === collection.id}
 							<div class="dropdown-menu">
 								<button onclick={() => startEditingCollection(collection.id)}> Rename </button>
-								<button onclick={() => addNewItem(collection.id)}> Add Item </button>
+								<button onclick={() => addNewItem(collection.id)}> Add Group </button>
 								<button onclick={() => deleteCollection(collection.id)}> Delete </button>
 							</div>
 						{/if}

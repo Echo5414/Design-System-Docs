@@ -23,9 +23,11 @@ function mapToken(token: any): TokenItem {
   // Strapi 5: attributes are flattened. Fallback to attributes for safety.
   const data = token.attributes || token;
   const type = (data.type as TokenType) || 'color';
+  const docId = token.documentId || data.documentId || token.id || createUniqueId();
 
   return {
-    id: String(token.id ?? createUniqueId()),
+    id: String(docId),
+    documentId: String(docId),
     name: data.name ?? 'Untitled token',
     type,
     value: data.value,
@@ -41,33 +43,7 @@ function mapToken(token: any): TokenItem {
   };
 }
 
-function mapTokensToCategories(tokens: any[], collectionId: number): CollectionItem[] {
-  if (!tokens?.length) return [];
-
-  const grouped = new Map<string, { displayName: string; tokens: TokenItem[] }>();
-
-  tokens.forEach((token) => {
-    const data = token.attributes || token;
-    const displayName = data.group_path || 'Tokens';
-    const key = slugify(displayName);
-    const mappedToken = mapToken(token);
-
-    if (!grouped.has(key)) {
-      grouped.set(key, { displayName, tokens: [] });
-    }
-
-    grouped.get(key)?.tokens.push(mappedToken);
-  });
-
-  return Array.from(grouped.entries()).map(([key, group]) => ({
-    id: `${collectionId}-${key}`,
-    name: group.displayName,
-    description: '',
-    items: group.tokens
-  }));
-}
-
-function mapCollectionsFromStrapi(designSystemData: any): Collection[] {
+function mapCollectionsFromStrapi(designSystemData: any, groupsByCollection?: Record<string, any[]>): Collection[] {
   if (Array.isArray(designSystemData)) {
     designSystemData = designSystemData[0];
   }
@@ -94,22 +70,63 @@ function mapCollectionsFromStrapi(designSystemData: any): Collection[] {
     }
     tokens = tokens || [];
 
-    const items = mapTokensToCategories(tokens, collection.id);
+    // Handle groups relation
+    let groups = colData.groups;
+    if (groups && groups.data) {
+      groups = groups.data;
+    } else if (Array.isArray(groups)) {
+      groups = groups;
+    } else if (groupsByCollection && groupsByCollection[String(collection.id)]) {
+      groups = groupsByCollection[String(collection.id)];
+    } else {
+      groups = [];
+    }
+    console.debug('[Collections] groups for collection', colData.name, groups);
+
+    // Group tokens by group relation; ungrouped tokens sit under "Ungrouped"
+    const ungroupedTokens = tokens.filter((t: any) => {
+      const data = t.attributes || t;
+      return !data.group;
+    }).map(mapToken);
+
+    const mappedGroups: CollectionItem[] = groups.map((group: any) => {
+      const gData = group.attributes || group;
+      const groupId = group.documentId || gData.documentId || group.id;
+      const groupTokens = tokens
+        .filter((t: any) => {
+          const data = t.attributes || t;
+          const rel = data.group;
+          const relId = rel?.documentId || rel?.id;
+          return relId && String(relId) === String(groupId);
+        })
+        .map(mapToken);
+
+      return {
+        id: String(groupId),
+        name: gData.name ?? 'Group',
+        description: gData.description ?? '',
+        items: groupTokens
+      };
+    });
+
+    const items: CollectionItem[] = [];
+
+    if (ungroupedTokens.length) {
+      items.push({
+        id: `${collection.id}-ungrouped`,
+        name: 'Ungrouped',
+        description: '',
+        items: ungroupedTokens
+      });
+    }
+
+    items.push(...mappedGroups);
 
     return {
       id: String(collection.id),
       name: colData.name ?? `Collection ${collection.id}`,
       description: colData.description ?? '',
-      items: items.length
-        ? items
-        : [
-          {
-            id: `${collection.id}-default`,
-            name: 'Tokens',
-            description: '',
-            items: []
-          }
-        ]
+      items
     };
   });
 }
@@ -128,7 +145,7 @@ function createCollectionsStore() {
 
       if (storedId) {
         try {
-          const ds = await getDesignSystem(storedId, { includeTokens: true });
+          const ds = await getDesignSystem(storedId, { includeTokens: true, includeGroups: true });
           designSystemData = ds?.data ?? ds;
         } catch (error: any) {
           console.warn('Failed to load stored design system, will fallback to list.', error);
@@ -137,7 +154,7 @@ function createCollectionsStore() {
       }
 
       if (!designSystemData) {
-        const list = await listDesignSystems({ includeTokens: true });
+        const list = await listDesignSystems({ includeTokens: true, includeGroups: true });
         const first = list?.data?.[0];
         if (first?.id) {
           localStorage.setItem('activeDesignSystemId', String(first.id));
@@ -150,23 +167,27 @@ function createCollectionsStore() {
         throw new Error('No design system found. Please connect a repository.');
       }
 
-      let collections = mapCollectionsFromStrapi(designSystemData);
-
-      // Fallback: if collections didn't populate, fetch collections directly for this design system
-      if (!collections.length && designSystemData.id) {
-        try {
-          const colRes = await getCollectionsByDesignSystem(Number(designSystemData.id), { includeTokens: true });
-          collections = mapCollectionsFromStrapi({
-            ...designSystemData,
-            attributes: {
-              ...(designSystemData.attributes ?? {}),
-              collections: colRes?.data ? { data: colRes.data } : []
-            }
-          });
-        } catch (err) {
-          console.warn('Failed to fetch collections directly for design system', err);
-        }
+      // Fetch groups separately to ensure they are present
+      let groupsByCollection: Record<string, any[]> = {};
+      try {
+        const groupsRes = await import('$lib/api/strapi').then(({ getGroupsByDesignSystem }) =>
+          getGroupsByDesignSystem(String(designSystemData.id))
+        );
+        const groupsData = groupsRes?.data || [];
+        groupsData.forEach((g: any) => {
+          const gData = g.attributes || g;
+          const collectionId = gData.collection?.data?.id || gData.collection?.id || gData.collection;
+          if (collectionId) {
+            groupsByCollection[collectionId] = groupsByCollection[collectionId] || [];
+            groupsByCollection[collectionId].push(g);
+          }
+        });
+      } catch (err) {
+        console.warn('Failed to fetch groups directly for design system', err);
       }
+
+      // Use designSystemData (already populated) plus extra groups map
+      let collections: Collection[] = mapCollectionsFromStrapi(designSystemData, groupsByCollection);
 
       set(collections);
       console.log('Collections loaded from Strapi', collections);
@@ -216,10 +237,27 @@ function createCollectionsStore() {
       }
     },
 
+    async createGroup(collectionId: string, name: string) {
+      if (!browser) return;
+      try {
+        await import('$lib/api/strapi').then(async ({ createGroup }) => {
+          const slug = slugify(name);
+          await createGroup({
+            name,
+            slug,
+            collection: collectionId,
+          });
+        });
+      } catch (error) {
+        console.error('Failed to create group:', error);
+        throw error;
+      }
+    },
+
     async renameCollection(id: string, newName: string) {
       if (!browser) return;
       try {
-        await updateCollection(parseInt(id), { name: newName });
+        await updateCollection(id, { name: newName });
         await load();
       } catch (error) {
         console.error('Failed to rename collection:', error);
@@ -230,12 +268,19 @@ function createCollectionsStore() {
     async deleteCollection(id: string) {
       if (!browser) return;
       try {
-        await deleteCollection(parseInt(id));
+        await deleteCollection(id);
         await load();
       } catch (error) {
         console.error('Failed to delete collection:', error);
         throw error;
       }
+    },
+
+    async renameGroup(id: string, newName: string) {
+      if (!browser) return;
+      const { updateGroup } = await import('$lib/api/strapi');
+      await updateGroup(id, { name: newName });
+      await load();
     },
 
     // These are legacy local updates, we rely on page reload or re-fetch for tokens now
